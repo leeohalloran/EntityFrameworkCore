@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Transactions;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -22,6 +23,11 @@ namespace Microsoft.EntityFrameworkCore
         {
             Fixture = fixture;
             Fixture.Reseed();
+
+            if (TestStore.ConnectionState == ConnectionState.Closed)
+            {
+                TestStore.OpenConnection();
+            }
         }
 
         protected TFixture Fixture { get; set; }
@@ -108,6 +114,216 @@ namespace Microsoft.EntityFrameworkCore
             AssertStoreInitialState();
         }
 
+        [Theory]
+        [InlineData(true, true)]
+        [InlineData(true, false)]
+        [InlineData(false, true)]
+        [InlineData(false, false)]
+        public virtual async Task SaveChanges_uses_enlisted_transaction(bool async, bool autoTransactionsEnabled)
+        {
+            if (!AmbientTransactionsSupported)
+            {
+                return;
+            }
+
+            using (var transaction = new CommittableTransaction())
+            {
+                using (var context = CreateContext())
+                {
+                    context.Database.EnlistTransaction(transaction);
+                    context.Database.AutoTransactionsEnabled = autoTransactionsEnabled;
+
+                    context.Add(new TransactionCustomer { Id = 77, Name = "Bobble" });
+                    context.Entry(context.Set<TransactionCustomer>().Last()).State = EntityState.Added;
+
+                    if (async)
+                    {
+                        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+                    }
+                    else
+                    {
+                        Assert.Throws<DbUpdateException>(() => context.SaveChanges());
+                    }
+                }
+
+                using (var context = CreateContext())
+                {
+                    Assert.NotNull(await context.Set<TransactionCustomer>().FindAsync(77));
+                }
+            }
+
+            AssertStoreInitialState();
+        }
+
+        [Theory]
+        [InlineData(true, true)]
+        [InlineData(true, false)]
+        [InlineData(false, true)]
+        [InlineData(false, false)]
+        public virtual async Task SaveChanges_uses_enlisted_transaction_after_connection_closed(bool async, bool autoTransactionsEnabled)
+        {
+            if (!AmbientTransactionsSupported)
+            {
+                return;
+            }
+
+            using (var context = CreateContext())
+            {
+                using (var transaction = new CommittableTransaction())
+                {
+                    context.Database.EnlistTransaction(transaction);
+                    context.Database.AutoTransactionsEnabled = autoTransactionsEnabled;
+
+                    context.Add(new TransactionCustomer { Id = 77, Name = "Bobble" });
+                    context.Entry(context.Set<TransactionCustomer>().Last()).State = EntityState.Added;
+                }
+
+                using (var transaction = new CommittableTransaction())
+                {
+                    TestStore.CloseConnection();
+                    TestStore.OpenConnection();
+                    context.Database.EnlistTransaction(transaction);
+
+                    if (async)
+                    {
+                        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+                    }
+                    else
+                    {
+                        Assert.Throws<DbUpdateException>(() => context.SaveChanges());
+                    }
+                }
+            }
+
+            AssertStoreInitialState();
+        }
+
+        [Theory]
+        [InlineData(true, true)]
+        [InlineData(true, false)]
+        [InlineData(false, true)]
+        [InlineData(false, false)]
+        public virtual async Task SaveChanges_uses_enlisted_transaction_connectionString(bool async, bool autoTransactionsEnabled)
+        {
+            if (!AmbientTransactionsSupported)
+            {
+                return;
+            }
+
+            using (var transaction = new CommittableTransaction())
+            {
+                using (var context = CreateContextWithConnectionString())
+                {
+                    context.Database.OpenConnection();
+                    context.Database.EnlistTransaction(transaction);
+                    context.Database.AutoTransactionsEnabled = autoTransactionsEnabled;
+
+                    context.Add(new TransactionCustomer { Id = 77, Name = "Bobble" });
+                    context.Entry(context.Set<TransactionCustomer>().Last()).State = EntityState.Added;
+
+                    if (async)
+                    {
+                        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+                    }
+                    else
+                    {
+                        Assert.Throws<DbUpdateException>(() => context.SaveChanges());
+                    }
+                    context.Database.CloseConnection();
+                }
+            }
+
+            AssertStoreInitialState();
+        }
+
+        [Theory]
+        [InlineData(true, true, true)]
+        [InlineData(true, true, false)]
+        [InlineData(true, false, true)]
+        [InlineData(true, false, false)]
+        [InlineData(false, true, true)]
+        [InlineData(false, true, false)]
+        [InlineData(false, false, true)]
+        [InlineData(false, false, false)]
+        public virtual async Task SaveChanges_uses_ambient_transaction(bool async, bool closeConnection, bool autoTransactionsEnabled)
+        {
+            if (!AmbientTransactionsSupported)
+            {
+                return;
+            }
+
+            using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+            {
+                if (TestStore.ConnectionState == ConnectionState.Closed)
+                {
+                    TestStore.OpenConnection();
+                }
+                using (var context = CreateContext())
+                {
+                    context.Database.AutoTransactionsEnabled = autoTransactionsEnabled;
+
+                    context.Add(new TransactionCustomer { Id = 77, Name = "Bobble" });
+                    context.Entry(context.Set<TransactionCustomer>().Last()).State = EntityState.Added;
+
+                    if (closeConnection)
+                    {
+                        TestStore.CloseConnection();
+                    }
+
+                    if (async)
+                    {
+                        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+                    }
+                    else
+                    {
+                        Assert.Throws<DbUpdateException>(() => context.SaveChanges());
+                    }
+                }
+
+                using (var context = CreateContext())
+                {
+                    Assert.NotNull(context.Set<TransactionCustomer>().Find(77));
+                }
+            }
+
+            AssertStoreInitialState();
+        }
+
+        [Theory]
+        [InlineData(true, true)]
+        [InlineData(true, false)]
+        [InlineData(false, true)]
+        [InlineData(false, false)]
+        public virtual async Task SaveChanges_uses_ambient_transaction_with_connectionString(bool async, bool autoTransactionsEnabled)
+        {
+            if (!AmbientTransactionsSupported)
+            {
+                return;
+            }
+
+            using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+            {
+                using (var context = CreateContextWithConnectionString())
+                {
+                    context.Database.AutoTransactionsEnabled = autoTransactionsEnabled;
+
+                    context.Add(new TransactionCustomer { Id = 77, Name = "Bobble" });
+                    context.Entry(context.Set<TransactionCustomer>().Last()).State = EntityState.Added;
+
+                    if (async)
+                    {
+                        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+                    }
+                    else
+                    {
+                        Assert.Throws<DbUpdateException>(() => context.SaveChanges());
+                    }
+                }
+            }
+
+            AssertStoreInitialState();
+        }
+
         [Fact]
         public virtual void SaveChanges_does_not_close_connection_opened_by_user()
         {
@@ -124,6 +340,7 @@ namespace Microsoft.EntityFrameworkCore
                 context.SaveChanges();
 
                 Assert.Equal(ConnectionState.Open, connection.State);
+                context.Database.CloseConnection();
             }
 
             using (var context = CreateContext())
@@ -150,6 +367,7 @@ namespace Microsoft.EntityFrameworkCore
                 await context.SaveChangesAsync();
 
                 Assert.Equal(ConnectionState.Open, connection.State);
+                context.Database.CloseConnection();
             }
 
             using (var context = CreateContext())
@@ -428,7 +646,8 @@ namespace Microsoft.EntityFrameworkCore
 
                         if (DirtyReadsOccur)
                         {
-                            using (innerContext.Database.BeginTransaction(IsolationLevel.ReadUncommitted))
+                            // ReSharper disable once RedundantNameQualifier
+                            using (innerContext.Database.BeginTransaction(System.Data.IsolationLevel.ReadUncommitted))
                             {
                                 Assert.Equal(Customers.Count - 1, innerContext.Set<TransactionCustomer>().Count());
                             }
@@ -436,7 +655,8 @@ namespace Microsoft.EntityFrameworkCore
 
                         if (SnapshotSupported)
                         {
-                            using (innerContext.Database.BeginTransaction(IsolationLevel.Snapshot))
+                            // ReSharper disable once RedundantNameQualifier
+                            using (innerContext.Database.BeginTransaction(System.Data.IsolationLevel.Snapshot))
                             {
                                 Assert.Equal(Customers, innerContext.Set<TransactionCustomer>().OrderBy(c => c.Id).ToList());
                             }
@@ -474,7 +694,8 @@ namespace Microsoft.EntityFrameworkCore
 
                         if (DirtyReadsOccur)
                         {
-                            using (await innerContext.Database.BeginTransactionAsync(IsolationLevel.ReadUncommitted))
+                            // ReSharper disable once RedundantNameQualifier
+                            using (await innerContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadUncommitted))
                             {
                                 Assert.Equal(Customers.Count - 1, await innerContext.Set<TransactionCustomer>().CountAsync());
                             }
@@ -482,7 +703,8 @@ namespace Microsoft.EntityFrameworkCore
 
                         if (SnapshotSupported)
                         {
-                            using (await innerContext.Database.BeginTransactionAsync(IsolationLevel.Snapshot))
+                            // ReSharper disable once RedundantNameQualifier
+                            using (await innerContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Snapshot))
                             {
                                 Assert.Equal(Customers, await innerContext.Set<TransactionCustomer>().OrderBy(c => c.Id).ToListAsync());
                             }
@@ -521,17 +743,13 @@ namespace Microsoft.EntityFrameworkCore
             AssertStoreInitialState();
         }
 
-        [Theory]
-        [InlineData(true)]
-        [InlineData(false)]
-        public virtual void UseTransaction_throws_if_mismatched_connection(bool autoTransaction)
+        [Fact]
+        public virtual void UseTransaction_throws_if_mismatched_connection()
         {
             using (var transaction = TestStore.BeginTransaction())
             {
                 using (var context = CreateContextWithConnectionString())
                 {
-                    context.Database.AutoTransactionsEnabled = autoTransaction;
-
                     var ex = Assert.Throws<InvalidOperationException>(
                         () =>
                             context.Database.UseTransaction(transaction));
@@ -540,17 +758,13 @@ namespace Microsoft.EntityFrameworkCore
             }
         }
 
-        [Theory]
-        [InlineData(true)]
-        [InlineData(false)]
-        public virtual void UseTransaction_throws_if_another_transaction_started(bool autoTransaction)
+        [Fact]
+        public virtual void UseTransaction_throws_if_another_transaction_started()
         {
             using (var transaction = TestStore.BeginTransaction())
             {
                 using (var context = CreateContextWithConnectionString())
                 {
-                    context.Database.AutoTransactionsEnabled = autoTransaction;
-
                     using (context.Database.BeginTransaction())
                     {
                         var ex = Assert.Throws<InvalidOperationException>(
@@ -562,22 +776,250 @@ namespace Microsoft.EntityFrameworkCore
             }
         }
 
-        [Theory]
-        [InlineData(true)]
-        [InlineData(false)]
-        public virtual void UseTransaction_will_not_dispose_external_transaction(bool autoTransaction)
+        [Fact]
+        public virtual void UseTransaction_throws_if_ambient_transaction_started()
+        {
+            using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+            {
+                using (var transaction = TestStore.BeginTransaction())
+                {
+                    using (var context = CreateContextWithConnectionString())
+                    {
+                        var ex = Assert.Throws<InvalidOperationException>(
+                            () => context.Database.UseTransaction(transaction));
+                        Assert.Equal(RelationalStrings.ConflictingAmbientTransaction, ex.Message);
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public virtual void UseTransaction_will_not_dispose_external_transaction()
         {
             using (var transaction = TestStore.BeginTransaction())
             {
                 using (var context = CreateContext())
                 {
-                    context.Database.AutoTransactionsEnabled = autoTransaction;
-
                     context.Database.UseTransaction(transaction);
 
                     context.Database.GetService<IRelationalConnection>().Dispose();
 
                     Assert.NotNull(transaction.Connection);
+                }
+            }
+        }
+
+        [Fact]
+        public virtual void UseTransaction_throws_if_enlisted_in_transaction()
+        {
+            if (!AmbientTransactionsSupported)
+            {
+                return;
+            }
+            using (var t = new CommittableTransaction())
+            {
+                using (var transaction = TestStore.BeginTransaction())
+                {
+                    using (var context = CreateContextWithConnectionString())
+                    {
+                        context.Database.OpenConnection();
+
+                        context.Database.EnlistTransaction(t);
+
+                        var ex = Assert.Throws<InvalidOperationException>(
+                            () => context.Database.UseTransaction(transaction));
+                        Assert.Equal(RelationalStrings.ConflictingEnlistedTransaction, ex.Message);
+                        context.Database.CloseConnection();
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public virtual void BeginTransaction_throws_if_another_transaction_started()
+        {
+            using (var context = CreateContextWithConnectionString())
+            {
+                using (context.Database.BeginTransaction())
+                {
+                    var ex = Assert.Throws<InvalidOperationException>(
+                        () => context.Database.BeginTransaction());
+                    Assert.Equal(RelationalStrings.TransactionAlreadyStarted, ex.Message);
+                }
+            }
+        }
+
+        [Fact]
+        public virtual void BeginTransaction_throws_if_ambient_transaction_started()
+        {
+            if (!AmbientTransactionsSupported)
+            {
+                return;
+            }
+
+            using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+            {
+                using (var context = CreateContextWithConnectionString())
+                {
+                    var ex = Assert.Throws<InvalidOperationException>(
+                        () => context.Database.BeginTransaction());
+                    Assert.Equal(RelationalStrings.ConflictingAmbientTransaction, ex.Message);
+                }
+            }
+        }
+
+        [Fact]
+        public virtual void BeginTransaction_throws_if_enlisted_in_transaction()
+        {
+            if (!AmbientTransactionsSupported)
+            {
+                return;
+            }
+
+            using (var transaction = new CommittableTransaction())
+            {
+                using (var context = CreateContextWithConnectionString())
+                {
+                    context.Database.OpenConnection();
+
+                    context.Database.EnlistTransaction(transaction);
+
+                    var ex = Assert.Throws<InvalidOperationException>(
+                        () => context.Database.BeginTransaction());
+                    Assert.Equal(RelationalStrings.ConflictingEnlistedTransaction, ex.Message);
+                    context.Database.CloseConnection();
+                }
+            }
+        }
+
+        [Fact]
+        public virtual void BeginTransaction_can_be_used_after_ambient_transaction_ended()
+        {
+            if (!AmbientTransactionsSupported)
+            {
+                return;
+            }
+
+            using (var context = CreateContextWithConnectionString())
+            {
+                using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+                {
+                    context.Database.OpenConnection();
+                }
+
+                using (context.Database.BeginTransaction())
+                {
+                }
+                context.Database.CloseConnection();
+            }
+        }
+
+        [Fact]
+        public virtual void BeginTransaction_can_be_used_after_enlisted_transaction_ended()
+        {
+            if (!AmbientTransactionsSupported)
+            {
+                return;
+            }
+
+            using (var context = CreateContextWithConnectionString())
+            {
+                using (var transaction = new CommittableTransaction())
+                {
+                    context.Database.OpenConnection();
+
+                    context.Database.EnlistTransaction(transaction);
+                }
+
+                using (context.Database.BeginTransaction())
+                {
+                }
+                context.Database.CloseConnection();
+            }
+        }
+
+        [Fact]
+        public virtual void BeginTransaction_can_be_used_after_another_transaction_connection_closed()
+        {
+            using (var context = CreateContextWithConnectionString())
+            {
+                using (context.Database.BeginTransaction())
+                {
+                    context.Database.CloseConnection();
+                    using (context.Database.BeginTransaction())
+                    {
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public virtual void BeginTransaction_can_be_used_after_enlisted_transaction_connection_closed()
+        {
+            if (!AmbientTransactionsSupported)
+            {
+                return;
+            }
+
+            using (var context = CreateContextWithConnectionString())
+            {
+                using (var transaction = new CommittableTransaction())
+                {
+                    context.Database.OpenConnection();
+
+                    context.Database.EnlistTransaction(transaction);
+
+                    context.Database.CloseConnection();
+
+                    using (context.Database.BeginTransaction())
+                    {
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public virtual void EnlistTransaction_throws_if_another_transaction_started()
+        {
+            if (!AmbientTransactionsSupported)
+            {
+                return;
+            }
+
+            using (var transaction = new CommittableTransaction())
+            {
+                using (var context = CreateContextWithConnectionString())
+                {
+                    using (context.Database.BeginTransaction())
+                    {
+                        Assert.Throws<InvalidOperationException>(
+                            () => context.Database.EnlistTransaction(transaction));
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public virtual void EnlistTransaction_throws_if_ambient_transaction_started()
+        {
+            if (!AmbientTransactionsSupported)
+            {
+                return;
+            }
+
+            using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+            {
+                using (var transaction = new CommittableTransaction())
+                {
+                    using (var context = CreateContextWithConnectionString())
+                    {
+                        context.Database.OpenConnection();
+
+                        Assert.Throws<InvalidOperationException>(
+                            () => context.Database.EnlistTransaction(transaction));
+
+                        context.Database.CloseConnection();
+                    }
                 }
             }
         }
@@ -594,6 +1036,8 @@ namespace Microsoft.EntityFrameworkCore
 
         protected abstract bool SnapshotSupported { get; }
 
+        protected virtual bool AmbientTransactionsSupported => false;
+
         protected virtual bool DirtyReadsOccur => true;
 
         protected DbContext CreateContext() => Fixture.CreateContext();
@@ -602,6 +1046,11 @@ namespace Microsoft.EntityFrameworkCore
 
         public abstract class TransactionFixtureBase : SharedStoreFixtureBase<DbContext>
         {
+            protected TransactionFixtureBase()
+            {
+                TransactionManager.DistributedTransactionStarted += DistributedTransactionStarted;
+            }
+
             protected override string StoreName { get; } = "TransactionTest";
             protected override bool UsePooling => false;
 
@@ -619,6 +1068,17 @@ namespace Microsoft.EntityFrameworkCore
             {
                 context.AddRange(Customers);
                 context.SaveChanges();
+            }
+
+            private void DistributedTransactionStarted(object sender, TransactionEventArgs e)
+            {
+                Assert.False(true, "Distributed transaction started");
+            }
+
+            public override void Dispose()
+            {
+                base.Dispose();
+                TransactionManager.DistributedTransactionStarted -= DistributedTransactionStarted;
             }
         }
 
