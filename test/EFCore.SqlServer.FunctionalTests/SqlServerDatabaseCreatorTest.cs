@@ -661,17 +661,36 @@ namespace Microsoft.EntityFrameworkCore
                 .AddScoped<IRelationalDatabaseCreator, TestDatabaseCreator>()
                 .BuildServiceProvider();
 
-
-        public static TransactionScope CreateTransaction(bool useTransaction)
+        public static IDisposable CreateTransaction(bool useTransaction)
         {
             if (useTransaction)
             {
 #if NET461
-                return new TransactionScope(TransactionScopeAsyncFlowOption.Enabled);
+                var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10));
+                return new DisposableDecorator(transaction,
+                    new TransactionScope(transaction, TimeSpan.FromMinutes(10), TransactionScopeAsyncFlowOption.Enabled));
 #endif
             }
 
             return new TransactionScope(TransactionScopeOption.Suppress, TransactionScopeAsyncFlowOption.Enabled);
+        }
+
+        private class DisposableDecorator : IDisposable
+        {
+            private readonly IDisposable[] _disposables;
+            public DisposableDecorator(params IDisposable[] disposables)
+            {
+                _disposables = disposables;
+            }
+
+            public void Dispose()
+            {
+                // ReSharper disable once ForCanBeConvertedToForeach
+                for (var i = 0; i < _disposables.Length; i++)
+                {
+                    _disposables[i].Dispose();
+                }
+            }
         }
 
         public class BloggingContext : DbContext

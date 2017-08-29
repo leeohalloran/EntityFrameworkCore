@@ -126,7 +126,7 @@ namespace Microsoft.EntityFrameworkCore
                 return;
             }
 
-            using (var transaction = new CommittableTransaction())
+            using (var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
             {
                 using (var context = CreateContext())
                 {
@@ -169,7 +169,7 @@ namespace Microsoft.EntityFrameworkCore
 
             using (var context = CreateContext())
             {
-                using (var transaction = new CommittableTransaction())
+                using (var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
                 {
                     context.Database.EnlistTransaction(transaction);
                     context.Database.AutoTransactionsEnabled = autoTransactionsEnabled;
@@ -178,7 +178,7 @@ namespace Microsoft.EntityFrameworkCore
                     context.Entry(context.Set<TransactionCustomer>().Last()).State = EntityState.Added;
                 }
 
-                using (var transaction = new CommittableTransaction())
+                using (var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
                 {
                     TestStore.CloseConnection();
                     TestStore.OpenConnection();
@@ -210,7 +210,7 @@ namespace Microsoft.EntityFrameworkCore
                 return;
             }
 
-            using (var transaction = new CommittableTransaction())
+            using (var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
             {
                 using (var context = CreateContextWithConnectionString())
                 {
@@ -252,37 +252,40 @@ namespace Microsoft.EntityFrameworkCore
                 return;
             }
 
-            using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+            using (var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
             {
-                if (TestStore.ConnectionState == ConnectionState.Closed)
+                using (new TransactionScope(transaction, TimeSpan.FromMinutes(10), TransactionScopeAsyncFlowOption.Enabled))
                 {
-                    TestStore.OpenConnection();
-                }
-                using (var context = CreateContext())
-                {
-                    context.Database.AutoTransactionsEnabled = autoTransactionsEnabled;
-
-                    context.Add(new TransactionCustomer { Id = 77, Name = "Bobble" });
-                    context.Entry(context.Set<TransactionCustomer>().Last()).State = EntityState.Added;
-
-                    if (closeConnection)
+                    if (TestStore.ConnectionState == ConnectionState.Closed)
                     {
-                        TestStore.CloseConnection();
+                        TestStore.OpenConnection();
+                    }
+                    using (var context = CreateContext())
+                    {
+                        context.Database.AutoTransactionsEnabled = autoTransactionsEnabled;
+
+                        context.Add(new TransactionCustomer { Id = 77, Name = "Bobble" });
+                        context.Entry(context.Set<TransactionCustomer>().Last()).State = EntityState.Added;
+
+                        if (closeConnection)
+                        {
+                            TestStore.CloseConnection();
+                        }
+
+                        if (async)
+                        {
+                            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+                        }
+                        else
+                        {
+                            Assert.Throws<DbUpdateException>(() => context.SaveChanges());
+                        }
                     }
 
-                    if (async)
+                    using (var context = CreateContext())
                     {
-                        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+                        Assert.NotNull(context.Set<TransactionCustomer>().Find(77));
                     }
-                    else
-                    {
-                        Assert.Throws<DbUpdateException>(() => context.SaveChanges());
-                    }
-                }
-
-                using (var context = CreateContext())
-                {
-                    Assert.NotNull(context.Set<TransactionCustomer>().Find(77));
                 }
             }
 
@@ -301,22 +304,25 @@ namespace Microsoft.EntityFrameworkCore
                 return;
             }
 
-            using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+            using (var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
             {
-                using (var context = CreateContextWithConnectionString())
+                using (new TransactionScope(transaction, TimeSpan.FromMinutes(10), TransactionScopeAsyncFlowOption.Enabled))
                 {
-                    context.Database.AutoTransactionsEnabled = autoTransactionsEnabled;
-
-                    context.Add(new TransactionCustomer { Id = 77, Name = "Bobble" });
-                    context.Entry(context.Set<TransactionCustomer>().Last()).State = EntityState.Added;
-
-                    if (async)
+                    using (var context = CreateContextWithConnectionString())
                     {
-                        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
-                    }
-                    else
-                    {
-                        Assert.Throws<DbUpdateException>(() => context.SaveChanges());
+                        context.Database.AutoTransactionsEnabled = autoTransactionsEnabled;
+
+                        context.Add(new TransactionCustomer { Id = 77, Name = "Bobble" });
+                        context.Entry(context.Set<TransactionCustomer>().Last()).State = EntityState.Added;
+
+                        if (async)
+                        {
+                            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+                        }
+                        else
+                        {
+                            Assert.Throws<DbUpdateException>(() => context.SaveChanges());
+                        }
                     }
                 }
             }
@@ -779,15 +785,18 @@ namespace Microsoft.EntityFrameworkCore
         [Fact]
         public virtual void UseTransaction_throws_if_ambient_transaction_started()
         {
-            using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+            using (var committableTransaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
             {
-                using (var transaction = TestStore.BeginTransaction())
+                using (new TransactionScope(committableTransaction, TimeSpan.FromMinutes(10), TransactionScopeAsyncFlowOption.Enabled))
                 {
-                    using (var context = CreateContextWithConnectionString())
+                    using (var transaction = TestStore.BeginTransaction())
                     {
-                        var ex = Assert.Throws<InvalidOperationException>(
-                            () => context.Database.UseTransaction(transaction));
-                        Assert.Equal(RelationalStrings.ConflictingAmbientTransaction, ex.Message);
+                        using (var context = CreateContextWithConnectionString())
+                        {
+                            var ex = Assert.Throws<InvalidOperationException>(
+                                () => context.Database.UseTransaction(transaction));
+                            Assert.Equal(RelationalStrings.ConflictingAmbientTransaction, ex.Message);
+                        }
                     }
                 }
             }
@@ -816,7 +825,7 @@ namespace Microsoft.EntityFrameworkCore
             {
                 return;
             }
-            using (var t = new CommittableTransaction())
+            using (var t = new CommittableTransaction(TimeSpan.FromMinutes(10)))
             {
                 using (var transaction = TestStore.BeginTransaction())
                 {
@@ -857,13 +866,16 @@ namespace Microsoft.EntityFrameworkCore
                 return;
             }
 
-            using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+            using (var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
             {
-                using (var context = CreateContextWithConnectionString())
+                using (new TransactionScope(transaction, TimeSpan.FromMinutes(10), TransactionScopeAsyncFlowOption.Enabled))
                 {
-                    var ex = Assert.Throws<InvalidOperationException>(
-                        () => context.Database.BeginTransaction());
-                    Assert.Equal(RelationalStrings.ConflictingAmbientTransaction, ex.Message);
+                    using (var context = CreateContextWithConnectionString())
+                    {
+                        var ex = Assert.Throws<InvalidOperationException>(
+                            () => context.Database.BeginTransaction());
+                        Assert.Equal(RelationalStrings.ConflictingAmbientTransaction, ex.Message);
+                    }
                 }
             }
         }
@@ -876,7 +888,7 @@ namespace Microsoft.EntityFrameworkCore
                 return;
             }
 
-            using (var transaction = new CommittableTransaction())
+            using (var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
             {
                 using (var context = CreateContextWithConnectionString())
                 {
@@ -902,9 +914,12 @@ namespace Microsoft.EntityFrameworkCore
 
             using (var context = CreateContextWithConnectionString())
             {
-                using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+                using (var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
                 {
-                    context.Database.OpenConnection();
+                    using (new TransactionScope(transaction, TimeSpan.FromMinutes(10), TransactionScopeAsyncFlowOption.Enabled))
+                    {
+                        context.Database.OpenConnection();
+                    }
                 }
 
                 using (context.Database.BeginTransaction())
@@ -924,7 +939,7 @@ namespace Microsoft.EntityFrameworkCore
 
             using (var context = CreateContextWithConnectionString())
             {
-                using (var transaction = new CommittableTransaction())
+                using (var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
                 {
                     context.Database.OpenConnection();
 
@@ -963,7 +978,7 @@ namespace Microsoft.EntityFrameworkCore
 
             using (var context = CreateContextWithConnectionString())
             {
-                using (var transaction = new CommittableTransaction())
+                using (var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
                 {
                     context.Database.OpenConnection();
 
@@ -986,7 +1001,7 @@ namespace Microsoft.EntityFrameworkCore
                 return;
             }
 
-            using (var transaction = new CommittableTransaction())
+            using (var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
             {
                 using (var context = CreateContextWithConnectionString())
                 {
@@ -1007,18 +1022,21 @@ namespace Microsoft.EntityFrameworkCore
                 return;
             }
 
-            using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+            using (var ambientTransaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
             {
-                using (var transaction = new CommittableTransaction())
+                using (new TransactionScope(ambientTransaction, TimeSpan.FromMinutes(10), TransactionScopeAsyncFlowOption.Enabled))
                 {
-                    using (var context = CreateContextWithConnectionString())
+                    using (var transaction = new CommittableTransaction(TimeSpan.FromMinutes(10)))
                     {
-                        context.Database.OpenConnection();
+                        using (var context = CreateContextWithConnectionString())
+                        {
+                            context.Database.OpenConnection();
 
-                        Assert.Throws<InvalidOperationException>(
-                            () => context.Database.EnlistTransaction(transaction));
+                            Assert.Throws<InvalidOperationException>(
+                                () => context.Database.EnlistTransaction(transaction));
 
-                        context.Database.CloseConnection();
+                            context.Database.CloseConnection();
+                        }
                     }
                 }
             }
