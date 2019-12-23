@@ -2,6 +2,8 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System.Diagnostics;
+using System.Linq;
+using JetBrains.Annotations;
 
 // ReSharper disable once CheckNamespace
 namespace System.Reflection
@@ -12,34 +14,37 @@ namespace System.Reflection
         public static bool IsStatic(this PropertyInfo property)
             => (property.GetMethod ?? property.SetMethod).IsStatic;
 
-        public static bool IsCandidateProperty(this PropertyInfo propertyInfo, bool needsWrite = true)
+        public static bool IsCandidateProperty(this PropertyInfo propertyInfo, bool needsWrite = true, bool publicOnly = true)
             => !propertyInfo.IsStatic()
-               && propertyInfo.GetIndexParameters().Length == 0
-               && propertyInfo.CanRead
-               && (!needsWrite || propertyInfo.CanWrite)
-               && propertyInfo.GetMethod != null && propertyInfo.GetMethod.IsPublic;
+                && propertyInfo.CanRead
+                && (!needsWrite || propertyInfo.FindSetterProperty() != null)
+                && propertyInfo.GetMethod != null
+                && (!publicOnly || propertyInfo.GetMethod.IsPublic)
+                && propertyInfo.GetIndexParameters().Length == 0;
 
-        public static Type FindCandidateNavigationPropertyType(this PropertyInfo propertyInfo, Func<Type, bool> isPrimitiveProperty)
+        public static bool IsEFIndexerProperty([NotNull] this PropertyInfo propertyInfo)
         {
-            var targetType = propertyInfo.PropertyType;
-            var targetSequenceType = targetType.TryGetSequenceType();
-            if (!propertyInfo.IsCandidateProperty(targetSequenceType == null))
+            if (propertyInfo.PropertyType == typeof(object))
             {
-                return null;
+                var indexParams = propertyInfo.GetIndexParameters();
+                if (indexParams.Length == 1
+                    && indexParams[0].ParameterType == typeof(string))
+                {
+                    return true;
+                }
             }
 
-            targetType = targetSequenceType ?? targetType;
-            targetType = targetType.UnwrapNullableType();
-
-            if (isPrimitiveProperty(targetType)
-                || targetType.GetTypeInfo().IsInterface
-                || targetType.GetTypeInfo().IsValueType
-                || targetType == typeof(object))
-            {
-                return null;
-            }
-
-            return targetType;
+            return false;
         }
+
+        public static PropertyInfo FindGetterProperty([NotNull] this PropertyInfo propertyInfo)
+            => propertyInfo.DeclaringType
+                .GetPropertiesInHierarchy(propertyInfo.GetSimpleMemberName())
+                .FirstOrDefault(p => p.GetMethod != null);
+
+        public static PropertyInfo FindSetterProperty([NotNull] this PropertyInfo propertyInfo)
+            => propertyInfo.DeclaringType
+                .GetPropertiesInHierarchy(propertyInfo.GetSimpleMemberName())
+                .FirstOrDefault(p => p.SetMethod != null);
     }
 }
