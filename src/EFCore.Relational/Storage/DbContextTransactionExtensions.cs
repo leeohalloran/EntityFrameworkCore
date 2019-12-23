@@ -4,8 +4,8 @@
 using System;
 using System.Data.Common;
 using JetBrains.Annotations;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Utilities;
 
 namespace Microsoft.EntityFrameworkCore.Storage
@@ -25,9 +25,7 @@ namespace Microsoft.EntityFrameworkCore.Storage
         {
             Check.NotNull(dbContextTransaction, nameof(dbContextTransaction));
 
-            var accessor = dbContextTransaction as IInfrastructure<DbTransaction>;
-
-            if (accessor == null)
+            if (!(dbContextTransaction is IInfrastructure<DbTransaction> accessor))
             {
                 throw new InvalidOperationException(RelationalStrings.RelationalNotInUse);
             }

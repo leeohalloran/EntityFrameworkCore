@@ -2,21 +2,19 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Linq;
 using Microsoft.EntityFrameworkCore.Design;
-using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Internal;
-using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.ReverseEngineering;
-using Microsoft.EntityFrameworkCore.Scaffolding.Metadata;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.TestUtilities;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
 {
     public class ReverseEngineeringConfigurationTests
     {
-        [Fact]
+        [ConditionalFact]
         public void Throws_exceptions_for_invalid_context_name()
         {
             ValidateContextNameInReverseEngineerGenerator("Invalid!CSharp*Class&Name");
@@ -26,106 +24,26 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
 
         private void ValidateContextNameInReverseEngineerGenerator(string contextName)
         {
-            var cSharpUtilities = new CSharpUtilities();
-            var reverseEngineer = new ModelScaffolder(
-                new FakeScaffoldingModelFactory(new TestOperationReporter()),
-                new CSharpScaffoldingGenerator(
-                    new InMemoryFileService(),
-                    new CSharpDbContextGenerator(new FakeScaffoldingCodeGenerator(), new FakeAnnotationCodeGenerator(), cSharpUtilities),
-                    new CSharpEntityTypeGenerator(cSharpUtilities)),
-                cSharpUtilities);
+            var reverseEngineer = new ServiceCollection()
+                .AddEntityFrameworkDesignTimeServices()
+                .AddSingleton<LoggingDefinitions, TestRelationalLoggingDefinitions>()
+                .AddSingleton<IRelationalTypeMappingSource, TestRelationalTypeMappingSource>()
+                .AddSingleton<IAnnotationCodeGenerator, AnnotationCodeGenerator>()
+                .AddSingleton<IDatabaseModelFactory, FakeDatabaseModelFactory>()
+                .AddSingleton<IProviderConfigurationCodeGenerator, TestProviderCodeGenerator>()
+                .AddSingleton<IScaffoldingModelFactory, FakeScaffoldingModelFactory>()
+                .BuildServiceProvider()
+                .GetRequiredService<IReverseEngineerScaffolder>();
 
             Assert.Equal(
                 DesignStrings.ContextClassNotValidCSharpIdentifier(contextName),
                 Assert.Throws<ArgumentException>(
-                        () => reverseEngineer.Generate(
-                            connectionString: "connectionstring",
-                            tables: Enumerable.Empty<string>(),
-                            schemas: Enumerable.Empty<string>(),
-                            projectPath: "FakeProjectPath",
-                            outputPath: null,
-                            rootNamespace: "FakeNamespace",
-                            contextName: contextName,
-                            useDataAnnotations: false,
-                            overwriteFiles: false,
-                            useDatabaseNames: false))
+                        () => reverseEngineer.ScaffoldModel(
+                            "connectionstring",
+                            new DatabaseModelFactoryOptions(),
+                            new ModelReverseEngineerOptions(),
+                            new ModelCodeGenerationOptions { ModelNamespace = "FakeNamespace", ContextName = contextName }))
                     .Message);
-        }
-
-        public class FakeScaffoldingCodeGenerator : IScaffoldingProviderCodeGenerator
-        {
-            public string GenerateUseProvider(string connectionString, string language)
-            {
-                throw new NotImplementedException();
-            }
-
-            public TypeScaffoldingInfo GetTypeScaffoldingInfo(DatabaseColumn column)
-            {
-                throw new NotImplementedException();
-            }
-        }
-
-        public class FakeAnnotationCodeGenerator : IAnnotationCodeGenerator
-        {
-            public string GenerateFluentApi(IModel model, IAnnotation annotation, string language)
-            {
-                throw new NotImplementedException();
-            }
-
-            public string GenerateFluentApi(IEntityType entityType, IAnnotation annotation, string language)
-            {
-                throw new NotImplementedException();
-            }
-
-            public string GenerateFluentApi(IKey key, IAnnotation annotation, string language)
-            {
-                throw new NotImplementedException();
-            }
-
-            public string GenerateFluentApi(IProperty property, IAnnotation annotation, string language)
-            {
-                throw new NotImplementedException();
-            }
-
-            public string GenerateFluentApi(IForeignKey foreignKey, IAnnotation annotation, string language)
-            {
-                throw new NotImplementedException();
-            }
-
-            public string GenerateFluentApi(IIndex index, IAnnotation annotation, string language)
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool IsHandledByConvention(IModel model, IAnnotation annotation)
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool IsHandledByConvention(IEntityType entityType, IAnnotation annotation)
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool IsHandledByConvention(IKey key, IAnnotation annotation)
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool IsHandledByConvention(IProperty property, IAnnotation annotation)
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool IsHandledByConvention(IForeignKey foreignKey, IAnnotation annotation)
-            {
-                throw new NotImplementedException();
-            }
-
-            public bool IsHandledByConvention(IIndex index, IAnnotation annotation)
-            {
-                throw new NotImplementedException();
-            }
         }
     }
 }

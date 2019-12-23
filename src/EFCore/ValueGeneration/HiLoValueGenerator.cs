@@ -49,8 +49,8 @@ namespace Microsoft.EntityFrameworkCore.ValueGeneration
         /// </summary>
         /// <para>The change tracking entry of the entity for which the value is being generated.</para>
         /// <returns> The value to be assigned to a property. </returns>
-        public override Task<TValue> NextAsync(
-            EntityEntry entry, CancellationToken cancellationToken = default(CancellationToken))
+        public override ValueTask<TValue> NextAsync(
+            EntityEntry entry, CancellationToken cancellationToken = default)
             => _generatorState.NextAsync<TValue>(GetNewLowValueAsync);
 
         /// <summary>
@@ -60,10 +60,11 @@ namespace Microsoft.EntityFrameworkCore.ValueGeneration
         protected abstract long GetNewLowValue();
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     Gets the low value for the next block of values to be used.
         /// </summary>
-        protected virtual Task<long> GetNewLowValueAsync(CancellationToken cancellationToken = default(CancellationToken))
+        /// <param name="cancellationToken"> The cancellation token. </param>
+        /// <returns> The low value for the next block of values to be used. </returns>
+        protected virtual Task<long> GetNewLowValueAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(GetNewLowValue());
     }
 }

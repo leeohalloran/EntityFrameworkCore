@@ -5,15 +5,18 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Internal;
 using Xunit;
 
+// ReSharper disable UnusedAutoPropertyAccessor.Local
+// ReSharper disable InconsistentNaming
 namespace Microsoft.EntityFrameworkCore.Metadata.Internal
 {
     public class ModelTest
     {
-        [Fact]
+        [ConditionalFact]
         public void Use_of_custom_IModel_throws()
         {
             var model = new FakeModel();
@@ -30,30 +33,32 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
             public IEnumerable<IAnnotation> GetAnnotations() => throw new NotImplementedException();
             public IEnumerable<IEntityType> GetEntityTypes() => throw new NotImplementedException();
             public IEntityType FindEntityType(string name) => throw new NotImplementedException();
-            public IEntityType FindEntityType(string name, string definingNavigationName, IEntityType definingEntityType) => throw new NotImplementedException();
+
+            public IEntityType FindEntityType(string name, string definingNavigationName, IEntityType definingEntityType) =>
+                throw new NotImplementedException();
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Snapshot_change_tracking_is_used_by_default()
         {
-            Assert.Equal(ChangeTrackingStrategy.Snapshot, new Model().ChangeTrackingStrategy);
-            Assert.Equal(ChangeTrackingStrategy.Snapshot, new Model().GetChangeTrackingStrategy());
+            Assert.Equal(ChangeTrackingStrategy.Snapshot, CreateModel().GetChangeTrackingStrategy());
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Change_tracking_strategy_can_be_changed()
         {
-            var model = new Model { ChangeTrackingStrategy = ChangeTrackingStrategy.ChangingAndChangedNotifications };
-            Assert.Equal(ChangeTrackingStrategy.ChangingAndChangedNotifications, model.ChangeTrackingStrategy);
+            var model = CreateModel();
+            model.SetChangeTrackingStrategy(ChangeTrackingStrategy.ChangingAndChangedNotifications);
+            Assert.Equal(ChangeTrackingStrategy.ChangingAndChangedNotifications, model.GetChangeTrackingStrategy());
 
-            model.ChangeTrackingStrategy = ChangeTrackingStrategy.ChangedNotifications;
+            model.SetChangeTrackingStrategy(ChangeTrackingStrategy.ChangedNotifications);
             Assert.Equal(ChangeTrackingStrategy.ChangedNotifications, model.GetChangeTrackingStrategy());
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_add_and_remove_entity_by_type()
         {
-            var model = new Model();
+            var model = CreateModel();
             Assert.Null(model.FindEntityType(typeof(Customer)));
             Assert.Null(model.RemoveEntityType(typeof(Customer)));
 
@@ -62,9 +67,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
             Assert.Equal(typeof(Customer), entityType.ClrType);
             Assert.NotNull(model.FindEntityType(typeof(Customer)));
             Assert.Same(model, entityType.Model);
-            Assert.NotNull(entityType.Builder);
+            Assert.NotNull(((EntityType)entityType).Builder);
 
-            Assert.Same(entityType, model.GetOrAddEntityType(typeof(Customer)));
+            Assert.Same(entityType, model.FindEntityType(typeof(Customer)));
 
             Assert.Equal(new[] { entityType }, model.GetEntityTypes().ToArray());
 
@@ -72,13 +77,13 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
 
             Assert.Null(model.RemoveEntityType(entityType.ClrType));
             Assert.Null(model.FindEntityType(typeof(Customer)));
-            Assert.Null(entityType.Builder);
+            Assert.Null(((EntityType)entityType).Builder);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_add_and_remove_entity_by_name()
         {
-            var model = new Model();
+            var model = CreateModel();
             Assert.Null(model.FindEntityType(typeof(Customer).FullName));
             Assert.Null(model.RemoveEntityType(typeof(Customer).FullName));
 
@@ -88,9 +93,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
             Assert.Equal(typeof(Customer).FullName, entityType.Name);
             Assert.NotNull(model.FindEntityType(typeof(Customer).FullName));
             Assert.Same(model, entityType.Model);
-            Assert.NotNull(entityType.Builder);
+            Assert.NotNull(((EntityType)entityType).Builder);
 
-            Assert.Same(entityType, model.GetOrAddEntityType(typeof(Customer).FullName));
+            Assert.Same(entityType, model.FindEntityType(typeof(Customer).FullName));
 
             Assert.Equal(new[] { entityType }, model.GetEntityTypes().ToArray());
 
@@ -98,15 +103,15 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
 
             Assert.Null(model.RemoveEntityType(entityType.Name));
             Assert.Null(model.FindEntityType(typeof(Customer).FullName));
-            Assert.Null(entityType.Builder);
+            Assert.Null(((EntityType)entityType).Builder);
         }
 
-        [Fact]
-        public void Can_add_dependent_entity_types()
+        [ConditionalFact]
+        public void Can_add_weak_entity_types()
         {
-            IMutableModel model = new Model();
+            IMutableModel model = CreateModel();
             var customerType = model.AddEntityType(typeof(Customer));
-            var idProperty = customerType.GetOrAddProperty(Customer.IdProperty);
+            var idProperty = customerType.AddProperty(Customer.IdProperty);
             var customerKey = customerType.AddKey(idProperty);
             var dependentOrderType = model.AddEntityType(typeof(Order), nameof(Customer.Orders), customerType);
 
@@ -130,13 +135,14 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                 model.FindEntityType(typeof(Order).DisplayName(), nameof(Customer.Orders), (IEntityType)customerType));
 
             Assert.Equal(
-                CoreStrings.ClashingDependentEntityType(typeof(Order).DisplayName(fullName: false)),
+                CoreStrings.ClashingWeakEntityType(typeof(Order).DisplayName(fullName: false)),
                 Assert.Throws<InvalidOperationException>(() => model.AddEntityType(typeof(Order))).Message);
             Assert.Equal(
-                CoreStrings.ClashingNonDependentEntityType(
+                CoreStrings.ClashingNonWeakEntityType(
                     nameof(Customer) + "." + nameof(Customer.Orders) + "#"
                     + nameof(Order) + "." + nameof(Order.Customer) + "#" + nameof(Customer)),
-                Assert.Throws<InvalidOperationException>(() => model.AddEntityType(typeof(Customer), nameof(Order.Customer), dependentOrderType)).Message);
+                Assert.Throws<InvalidOperationException>(
+                    () => model.AddEntityType(typeof(Customer), nameof(Order.Customer), dependentOrderType)).Message);
 
             Assert.Equal(
                 CoreStrings.ForeignKeySelfReferencingDependentEntityType(
@@ -147,7 +153,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
             Assert.Equal(
                 CoreStrings.EntityTypeInUseByForeignKey(
                     nameof(Customer) + "." + nameof(Customer.Orders) + "#" + nameof(Order),
-                    nameof(Customer), Property.Format(fk.Properties)),
+                    nameof(Customer), fk.Properties.Format()),
                 Assert.Throws<InvalidOperationException>(() => model.RemoveEntityType(dependentOrderType)).Message);
 
             dependentOrderType.RemoveForeignKey(fk.Properties, fk.PrincipalKey, fk.PrincipalEntityType);
@@ -156,18 +162,17 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                 dependentOrderType, model.RemoveEntityType(
                     typeof(Order), nameof(Customer.Orders), customerType));
             Assert.Null(((EntityType)dependentOrderType).Builder);
-            Assert.Null(model.RemoveEntityType(dependentOrderType));
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Cannot_remove_entity_type_when_referenced_by_foreign_key()
         {
-            var model = new Model();
-            var customerType = model.GetOrAddEntityType(typeof(Customer));
-            var idProperty = customerType.GetOrAddProperty(Customer.IdProperty);
-            var customerKey = customerType.GetOrAddKey(idProperty);
-            var orderType = model.GetOrAddEntityType(typeof(Order));
-            var customerFk = orderType.GetOrAddProperty(Order.CustomerIdProperty);
+            var model = CreateModel();
+            var customerType = model.AddEntityType(typeof(Customer));
+            var idProperty = customerType.AddProperty(Customer.IdProperty);
+            var customerKey = customerType.AddKey(idProperty);
+            var orderType = model.AddEntityType(typeof(Order));
+            var customerFk = orderType.AddProperty(Order.CustomerIdProperty);
 
             orderType.AddForeignKey(customerFk, customerKey, customerType);
 
@@ -179,24 +184,24 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                 Assert.Throws<InvalidOperationException>(() => model.RemoveEntityType(customerType.Name)).Message);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Cannot_remove_entity_type_when_it_has_derived_types()
         {
-            var model = new Model();
-            var customerType = model.GetOrAddEntityType(typeof(Customer));
-            var specialCustomerType = model.GetOrAddEntityType(typeof(SpecialCustomer));
+            var model = CreateModel();
+            var customerType = model.AddEntityType(typeof(Customer));
+            var specialCustomerType = model.AddEntityType(typeof(SpecialCustomer));
 
-            specialCustomerType.HasBaseType(customerType);
+            specialCustomerType.BaseType = customerType;
 
             Assert.Equal(
                 CoreStrings.EntityTypeInUseByDerived(typeof(Customer).Name, typeof(SpecialCustomer).Name),
                 Assert.Throws<InvalidOperationException>(() => model.RemoveEntityType(customerType.Name)).Message);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Adding_duplicate_entity_by_type_throws()
         {
-            var model = new Model();
+            var model = CreateModel();
             Assert.Null(model.RemoveEntityType(typeof(Customer).FullName));
 
             model.AddEntityType(typeof(Customer));
@@ -206,10 +211,10 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                 Assert.Throws<InvalidOperationException>(() => model.AddEntityType(typeof(Customer))).Message);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Adding_duplicate_entity_by_name_throws()
         {
-            var model = new Model();
+            var model = CreateModel();
             Assert.Null(model.RemoveEntityType(typeof(Customer)));
 
             model.AddEntityType(typeof(Customer));
@@ -219,53 +224,55 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                 Assert.Throws<InvalidOperationException>(() => model.AddEntityType(typeof(Customer).FullName)).Message);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_get_entity_by_type()
         {
-            var model = new Model();
-            var entityType = model.GetOrAddEntityType(typeof(Customer));
+            var model = CreateModel();
+            var entityType = model.AddEntityType(typeof(Customer));
 
             Assert.Same(entityType, model.FindEntityType(typeof(Customer)));
             Assert.Same(entityType, model.FindEntityType(typeof(Customer)));
             Assert.Null(model.FindEntityType(typeof(string)));
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_get_entity_by_name()
         {
-            var model = new Model();
-            var entityType = model.GetOrAddEntityType(typeof(Customer).FullName);
+            var model = CreateModel();
+            var entityType = model.AddEntityType(typeof(Customer).FullName);
 
             Assert.Same(entityType, model.FindEntityType(typeof(Customer).FullName));
             Assert.Same(entityType, model.FindEntityType(typeof(Customer).FullName));
             Assert.Null(model.FindEntityType(typeof(string)));
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Entities_are_ordered_by_name()
         {
-            var model = new Model();
+            var model = CreateModel();
             var entityType1 = model.AddEntityType(typeof(Order));
             var entityType2 = model.AddEntityType(typeof(Customer));
 
             Assert.True(new[] { entityType2, entityType1 }.SequenceEqual(model.GetEntityTypes()));
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_get_referencing_foreign_keys()
         {
-            var model = new Model();
+            var model = CreateModel();
             var entityType1 = model.AddEntityType(typeof(Customer));
             var entityType2 = model.AddEntityType(typeof(Order));
             var keyProperty = entityType1.AddProperty("Id", typeof(int));
             var fkProperty = entityType2.AddProperty("CustomerId", typeof(int));
-            var foreignKey = entityType2.GetOrAddForeignKey(fkProperty, entityType1.AddKey(keyProperty), entityType1);
+            var foreignKey = entityType2.AddForeignKey(fkProperty, entityType1.AddKey(keyProperty), entityType1);
 
             var referencingForeignKeys = entityType1.GetReferencingForeignKeys();
 
             Assert.Same(foreignKey, referencingForeignKeys.Single());
             Assert.Same(foreignKey, entityType1.GetReferencingForeignKeys().Single());
         }
+
+        private static IMutableModel CreateModel() => new Model();
 
         private class Customer
         {

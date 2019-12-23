@@ -3,22 +3,26 @@
 
 using System.Data;
 using JetBrains.Annotations;
+using Microsoft.EntityFrameworkCore.Storage;
 
-namespace Microsoft.EntityFrameworkCore.Storage.Internal
+namespace Microsoft.EntityFrameworkCore.Sqlite.Storage.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///     any release. You should only use it directly in your code with extreme caution and knowing that
+    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
     public class SqliteDateTimeTypeMapping : DateTimeTypeMapping
     {
-        private const string DateTimeFormatConst = @"{0:yyyy\-MM\-dd HH\:mm\:ss.FFFFFFF}";
+        private const string DateTimeFormatConst = @"'{0:yyyy\-MM\-dd HH\:mm\:ss.FFFFFFF}'";
 
         /// <summary>
-        ///     Initializes a new instance of the <see cref="SqliteDateTimeTypeMapping" /> class.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        /// <param name="storeType"> The name of the database type. </param>
-        /// <param name="dbType"> The <see cref="System.Data.DbType" /> to be used. </param>
         public SqliteDateTimeTypeMapping(
             [NotNull] string storeType,
             DbType? dbType = null)
@@ -27,15 +31,30 @@ namespace Microsoft.EntityFrameworkCore.Storage.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public override RelationalTypeMapping Clone(string storeType, int? size)
-            => new SqliteDateTimeTypeMapping(storeType, DbType);
+        protected SqliteDateTimeTypeMapping(RelationalTypeMappingParameters parameters)
+            : base(parameters)
+        {
+        }
 
         /// <summary>
-        ///     Gets the string format to be used to generate SQL literals of this type.
+        ///     Creates a copy of this mapping.
         /// </summary>
-        protected override string SqlLiteralFormatString => "'" + DateTimeFormatConst + "'";
+        /// <param name="parameters"> The parameters for this mapping. </param>
+        /// <returns> The newly created mapping. </returns>
+        protected override RelationalTypeMapping Clone(RelationalTypeMappingParameters parameters)
+            => new SqliteDateTimeTypeMapping(parameters);
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        protected override string SqlLiteralFormatString => DateTimeFormatConst;
     }
 }

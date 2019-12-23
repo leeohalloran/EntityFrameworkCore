@@ -3,105 +3,73 @@
 
 using System;
 using System.Diagnostics;
-using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Diagnostics.Internal;
+using Microsoft.EntityFrameworkCore.InMemory.Diagnostics.Internal;
+using Microsoft.EntityFrameworkCore.InMemory.Internal;
+using Microsoft.EntityFrameworkCore.InMemory.Storage.Internal;
 using Microsoft.EntityFrameworkCore.Internal;
-using Microsoft.EntityFrameworkCore.Storage.Internal;
-using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore.TestUtilities;
 using Xunit;
 
+// ReSharper disable InconsistentNaming
 namespace Microsoft.EntityFrameworkCore
 {
     public class InMemoryTransactionManagerTest
     {
-        [Fact]
+        [ConditionalFact]
         public void CurrentTransaction_returns_null()
         {
-            var optionsBuilder = new DbContextOptionsBuilder();
-            optionsBuilder.UseInMemoryDatabase(Guid.NewGuid().ToString());
-
-            var transactionManager = new InMemoryTransactionManager(new FakeLogger());
+            var transactionManager = new InMemoryTransactionManager(CreateLogger());
 
             Assert.Null(transactionManager.CurrentTransaction);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Throws_on_BeginTransaction()
         {
-            var optionsBuilder = new DbContextOptionsBuilder();
-            optionsBuilder.UseInMemoryDatabase(Guid.NewGuid().ToString());
-
-            var transactionManager = new InMemoryTransactionManager(new FakeLogger());
-
-            Assert.Equal(
-                InMemoryStrings.LogTransactionsNotSupported.GenerateMessage(),
-                Assert.Throws<InvalidOperationException>(
-                    () => transactionManager.BeginTransaction()).Message);
+            AssertThrows(() => new InMemoryTransactionManager(CreateLogger()).BeginTransaction());
         }
 
-        [Fact]
-        public async Task Throws_on_BeginTransactionAsync()
+        [ConditionalFact]
+        public void Throws_on_BeginTransactionAsync()
         {
-            var optionsBuilder = new DbContextOptionsBuilder();
-            optionsBuilder.UseInMemoryDatabase(Guid.NewGuid().ToString());
-
-            var transactionManager = new InMemoryTransactionManager(new FakeLogger());
-
-            Assert.Equal(
-                InMemoryStrings.LogTransactionsNotSupported.GenerateMessage(),
-                (await Assert.ThrowsAsync<InvalidOperationException>(
-                    async () => await transactionManager.BeginTransactionAsync())).Message);
+            AssertThrows(() => new InMemoryTransactionManager(CreateLogger()).BeginTransactionAsync().GetAwaiter().GetResult());
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Throws_on_CommitTransaction()
         {
-            var optionsBuilder = new DbContextOptionsBuilder();
-            optionsBuilder.UseInMemoryDatabase(Guid.NewGuid().ToString());
-
-            var transactionManager = new InMemoryTransactionManager(new FakeLogger());
-
-            Assert.Equal(
-                InMemoryStrings.LogTransactionsNotSupported.GenerateMessage(),
-                Assert.Throws<InvalidOperationException>(
-                    () => transactionManager.CommitTransaction()).Message);
+            AssertThrows(() => new InMemoryTransactionManager(CreateLogger()).CommitTransaction());
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Throws_on_RollbackTransaction()
         {
-            var optionsBuilder = new DbContextOptionsBuilder();
-            optionsBuilder.UseInMemoryDatabase(Guid.NewGuid().ToString());
-
-            var transactionManager = new InMemoryTransactionManager(new FakeLogger());
-
-            Assert.Equal(
-                InMemoryStrings.LogTransactionsNotSupported.GenerateMessage(),
-                Assert.Throws<InvalidOperationException>(
-                    () => transactionManager.RollbackTransaction()).Message);
+            AssertThrows(() => new InMemoryTransactionManager(CreateLogger()).RollbackTransaction());
         }
 
-        private class FakeLogger : IDiagnosticsLogger<DbLoggerCategory.Database.Transaction>, ILogger
+        private static void AssertThrows(Action action)
         {
-            public void Log<TState>(
-                LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
-            {
-                throw new InvalidOperationException(formatter(state, exception));
-            }
+            Assert.Equal(
+                CoreStrings.WarningAsErrorTemplate(
+                    InMemoryEventId.TransactionIgnoredWarning,
+                    InMemoryResources.LogTransactionsNotSupported(new TestLogger<InMemoryLoggingDefinitions>()).GenerateMessage(),
+                    "InMemoryEventId.TransactionIgnoredWarning"),
+                Assert.Throws<InvalidOperationException>(action).Message);
+        }
 
-            public bool IsEnabled(LogLevel logLevel) => true;
-
-            public WarningBehavior GetLogBehavior(EventId eventId, LogLevel logLevel) => WarningBehavior.Log;
-
-            public IDisposable BeginScope<TState>(TState state) => null;
-
-            public ILoggingOptions Options { get; }
-
-            public bool ShouldLogSensitiveData() => false;
-
-            public ILogger Logger => this;
-
-            public DiagnosticSource DiagnosticSource { get; } = new DiagnosticListener("Fake");
+        private DiagnosticsLogger<DbLoggerCategory.Database.Transaction> CreateLogger()
+        {
+            var options = new LoggingOptions();
+            options.Initialize(new DbContextOptionsBuilder().ConfigureWarnings(w => w.Default(WarningBehavior.Throw)).Options);
+            var logger = new DiagnosticsLogger<DbLoggerCategory.Database.Transaction>(
+                new ListLoggerFactory(l => false),
+                options,
+                new DiagnosticListener("Fake"),
+                new InMemoryLoggingDefinitions(),
+                new NullDbContextLogger());
+            return logger;
         }
     }
 }

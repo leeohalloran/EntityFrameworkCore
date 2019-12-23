@@ -2,48 +2,84 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Data.SqlClient;
 using System.IO;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
 namespace Microsoft.EntityFrameworkCore.TestUtilities
 {
     public static class TestEnvironment
     {
-        public static IConfiguration Config { get; }
+        public static IConfiguration Config { get; } = new ConfigurationBuilder()
+            .SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("config.json", optional: true)
+            .AddJsonFile("config.test.json", optional: true)
+            .AddEnvironmentVariables()
+            .Build()
+            .GetSection("Test:SqlServer");
 
-        static TestEnvironment()
+        public static string DefaultConnection { get; } = Config["DefaultConnection"]
+            ?? "Data Source=(localdb)\\MSSQLLocalDB;Database=master;Integrated Security=True;Connect Timeout=60;ConnectRetryCount=0";
+
+        private static readonly string _dataSource = new SqlConnectionStringBuilder(DefaultConnection).DataSource;
+
+        public static bool IsConfigured { get; } = !string.IsNullOrEmpty(_dataSource);
+
+        public static bool IsLocalDb { get; } = _dataSource.StartsWith("(localdb)", StringComparison.OrdinalIgnoreCase);
+
+        public static bool IsSqlAzure { get; } = _dataSource.Contains("database.windows.net");
+
+        public static bool IsCI { get; } = Environment.GetEnvironmentVariable("PIPELINE_WORKSPACE") != null
+            || Environment.GetEnvironmentVariable("TEAMCITY_VERSION") != null;
+
+        private static bool? _fullTextInstalled;
+
+        public static bool IsFullTestSearchSupported
         {
-            var configBuilder = new ConfigurationBuilder()
-                .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("config.json", optional: true)
-                .AddJsonFile("config.test.json", optional: true)
-                .AddEnvironmentVariables();
+            get
+            {
+                if (!IsConfigured)
+                {
+                    return false;
+                }
 
-            Config = configBuilder.Build()
-                .GetSection("Test:SqlServer");
+                if (_fullTextInstalled.HasValue)
+                {
+                    return _fullTextInstalled.Value;
+                }
+
+                using (var sqlConnection = new SqlConnection(SqlServerTestStore.CreateConnectionString("master")))
+                {
+                    sqlConnection.Open();
+
+                    using var command = new SqlCommand(
+                        "SELECT FULLTEXTSERVICEPROPERTY('IsFullTextInstalled')", sqlConnection);
+                    var result = (int)command.ExecuteScalar();
+
+                    _fullTextInstalled = result == 1;
+
+                    if (_fullTextInstalled.Value)
+                    {
+                        var flag = GetFlag("SupportsFullTextSearch");
+
+                        if (flag.HasValue)
+                        {
+                            return flag.Value;
+                        }
+                    }
+                }
+
+                _fullTextInstalled = false;
+                return false;
+            }
         }
 
-        private const string DefaultConnectionString = "Data Source=(localdb)\\MSSQLLocalDB;Database=master;Integrated Security=True;Connect Timeout=30";
-
-        public static string DefaultConnection => Config["DefaultConnection"] ?? DefaultConnectionString;
-
-        public static bool IsSqlAzure => new SqlConnectionStringBuilder(DefaultConnection).DataSource.Contains("database.windows.net");
-
-        public static bool IsTeamCity => Environment.GetEnvironmentVariable("TEAMCITY_VERSION") != null;
-
-        public static string ElasticPoolName => Config["ElasticPoolName"];
+        public static string ElasticPoolName { get; } = Config["ElasticPoolName"];
 
         public static bool? GetFlag(string key)
-        {
-            bool flag;
-            return bool.TryParse(Config[key], out flag) ? flag : (bool?)null;
-        }
+            => bool.TryParse(Config[key], out var flag) ? flag : (bool?)null;
 
         public static int? GetInt(string key)
-        {
-            int value;
-            return int.TryParse(Config[key], out value) ? value : (int?)null;
-        }
+            => int.TryParse(Config[key], out var value) ? value : (int?)null;
     }
 }

@@ -1,12 +1,16 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Transactions;
 using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Utilities;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.EntityFrameworkCore.Storage
 {
@@ -17,6 +21,12 @@ namespace Microsoft.EntityFrameworkCore.Storage
     ///     <para>
     ///         This type is typically used by database providers (and other extensions). It is generally
     ///         not used in application code.
+    ///     </para>
+    ///     <para>
+    ///         The service lifetime is <see cref="ServiceLifetime.Scoped" />. This means that each
+    ///         <see cref="DbContext" /> instance will use its own instance of this service.
+    ///         The implementation may depend on other services registered with any lifetime.
+    ///         The implementation does not need to be thread-safe.
     ///     </para>
     /// </summary>
     public abstract class RelationalDatabaseCreator : IRelationalDatabaseCreator
@@ -57,7 +67,7 @@ namespace Microsoft.EntityFrameworkCore.Storage
         ///     A task that represents the asynchronous operation. The task result contains
         ///     true if the database exists; otherwise false.
         /// </returns>
-        public virtual Task<bool> ExistsAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public virtual Task<bool> ExistsAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -76,13 +86,13 @@ namespace Microsoft.EntityFrameworkCore.Storage
         /// <returns>
         ///     A task that represents the asynchronous operation.
         /// </returns>
-        public virtual Task CreateAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public virtual Task CreateAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             Create();
 
-            return Task.FromResult(0);
+            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -97,13 +107,13 @@ namespace Microsoft.EntityFrameworkCore.Storage
         /// <returns>
         ///     A task that represents the asynchronous operation.
         /// </returns>
-        public virtual Task DeleteAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public virtual Task DeleteAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             Delete();
 
-            return Task.FromResult(0);
+            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -121,22 +131,24 @@ namespace Microsoft.EntityFrameworkCore.Storage
         /// <returns>
         ///     A task that represents the asynchronous operation.
         /// </returns>
-        public virtual async Task CreateTablesAsync(CancellationToken cancellationToken = default(CancellationToken))
-            => await Dependencies.MigrationCommandExecutor.ExecuteNonQueryAsync(GetCreateTablesCommands(), Dependencies.Connection, cancellationToken);
+        public virtual Task CreateTablesAsync(CancellationToken cancellationToken = default)
+            => Dependencies.MigrationCommandExecutor.ExecuteNonQueryAsync(
+                GetCreateTablesCommands(), Dependencies.Connection, cancellationToken);
 
         /// <summary>
         ///     Gets the commands that will create all tables from the model.
         /// </summary>
         /// <returns> The generated commands. </returns>
         protected virtual IReadOnlyList<MigrationCommand> GetCreateTablesCommands()
-            => Dependencies.MigrationsSqlGenerator.Generate(Dependencies.ModelDiffer.GetDifferences(null, Dependencies.Model), Dependencies.Model);
+            => Dependencies.MigrationsSqlGenerator.Generate(
+                Dependencies.ModelDiffer.GetDifferences(null, Dependencies.Model), Dependencies.Model);
 
         /// <summary>
         ///     Determines whether the database contains any tables. No attempt is made to determine if
         ///     tables belong to the current model or not.
         /// </summary>
         /// <returns> A value indicating whether any tables are present in the database. </returns>
-        protected abstract bool HasTables();
+        public abstract bool HasTables();
 
         /// <summary>
         ///     Asynchronously determines whether the database contains any tables. No attempt is made to determine if
@@ -147,7 +159,7 @@ namespace Microsoft.EntityFrameworkCore.Storage
         ///     A task that represents the asynchronous operation. The task result contains
         ///     a value indicating whether any tables are present in the database.
         /// </returns>
-        protected virtual Task<bool> HasTablesAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public virtual Task<bool> HasTablesAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -174,6 +186,7 @@ namespace Microsoft.EntityFrameworkCore.Storage
                 Delete();
                 return true;
             }
+
             return false;
         }
 
@@ -192,7 +205,7 @@ namespace Microsoft.EntityFrameworkCore.Storage
         ///     A task that represents the asynchronous save operation. The task result contains true if the database is deleted,
         ///     false if it did not exist.
         /// </returns>
-        public virtual async Task<bool> EnsureDeletedAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public virtual async Task<bool> EnsureDeletedAsync(CancellationToken cancellationToken = default)
         {
             if (await ExistsAsync(cancellationToken))
             {
@@ -200,6 +213,7 @@ namespace Microsoft.EntityFrameworkCore.Storage
 
                 return true;
             }
+
             return false;
         }
 
@@ -213,17 +227,20 @@ namespace Microsoft.EntityFrameworkCore.Storage
         /// </returns>
         public virtual bool EnsureCreated()
         {
-            if (!Exists())
+            using (new TransactionScope(TransactionScopeOption.Suppress, TransactionScopeAsyncFlowOption.Enabled))
             {
-                Create();
-                CreateTables();
-                return true;
-            }
+                if (!Exists())
+                {
+                    Create();
+                    CreateTables();
+                    return true;
+                }
 
-            if (!HasTables())
-            {
-                CreateTables();
-                return true;
+                if (!HasTables())
+                {
+                    CreateTables();
+                    return true;
+                }
             }
 
             return false;
@@ -239,24 +256,97 @@ namespace Microsoft.EntityFrameworkCore.Storage
         ///     A task that represents the asynchronous save operation. The task result contains true if the database is created,
         ///     false if it already existed.
         /// </returns>
-        public virtual async Task<bool> EnsureCreatedAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public virtual async Task<bool> EnsureCreatedAsync(CancellationToken cancellationToken = default)
         {
-            if (!await ExistsAsync(cancellationToken))
+            var transactionScope = new TransactionScope(TransactionScopeOption.Suppress, TransactionScopeAsyncFlowOption.Enabled);
+            try
             {
-                await CreateAsync(cancellationToken);
-                await CreateTablesAsync(cancellationToken);
+                if (!await ExistsAsync(cancellationToken))
+                {
+                    await CreateAsync(cancellationToken);
+                    await CreateTablesAsync(cancellationToken);
 
-                return true;
+                    return true;
+                }
+
+                if (!await HasTablesAsync(cancellationToken))
+                {
+                    await CreateTablesAsync(cancellationToken);
+
+                    return true;
+                }
             }
-
-            if (!await HasTablesAsync(cancellationToken))
+            finally
             {
-                await CreateTablesAsync(cancellationToken);
-
-                return true;
+                await transactionScope.DisposeAsyncIfAvailable();
             }
 
             return false;
+        }
+
+        /// <summary>
+        ///     Generates a script to create all tables for the current model.
+        /// </summary>
+        /// <returns>
+        ///     A SQL script.
+        /// </returns>
+        public virtual string GenerateCreateScript()
+        {
+            var commands = GetCreateTablesCommands();
+            var builder = new StringBuilder();
+            foreach (var command in commands)
+            {
+                builder
+                    .Append(command.CommandText)
+                    .AppendLine(Dependencies.SqlGenerationHelper.BatchTerminator);
+            }
+
+            return builder.ToString();
+        }
+
+        /// <summary>
+        ///     <para>
+        ///         Determines whether or not the database is available and can be connected to.
+        ///     </para>
+        ///     <para>
+        ///         Note that being able to connect to the database does not mean that it is
+        ///         up-to-date with regard to schema creation, etc.
+        ///     </para>
+        /// </summary>
+        /// <returns> <c>True</c> if the database is available; <c>false</c> otherwise. </returns>
+        public virtual bool CanConnect()
+        {
+            try
+            {
+                return Exists();
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        ///     <para>
+        ///         Determines whether or not the database is available and can be connected to.
+        ///     </para>
+        ///     <para>
+        ///         Note that being able to connect to the database does not mean that it is
+        ///         up-to-date with regard to schema creation, etc.
+        ///     </para>
+        /// </summary>
+        /// <param name="cancellationToken">A <see cref="CancellationToken" /> to observe while waiting for the task to complete.</param>
+        /// <returns> <c>True</c> if the database is available; <c>false</c> otherwise. </returns>
+        public virtual async Task<bool> CanConnectAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                return await ExistsAsync(cancellationToken);
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }

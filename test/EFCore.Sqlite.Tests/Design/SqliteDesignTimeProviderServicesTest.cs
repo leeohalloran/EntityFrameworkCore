@@ -3,15 +3,15 @@
 
 using System;
 using System.Reflection;
-using Microsoft.EntityFrameworkCore.Design.Internal;
-using Microsoft.EntityFrameworkCore.Storage.Internal;
+using Microsoft.EntityFrameworkCore.Sqlite.Design.Internal;
+using Microsoft.EntityFrameworkCore.Sqlite.Storage.Internal;
 
 namespace Microsoft.EntityFrameworkCore.Design
 {
     public class SqliteDesignTimeProviderServicesTest : DesignTimeProviderServicesTest
     {
         protected override Assembly GetRuntimeAssembly()
-            => typeof(SqliteRelationalConnection).GetTypeInfo().Assembly;
+            => typeof(SqliteRelationalConnection).Assembly;
 
         protected override Type GetDesignTimeServicesType()
             => typeof(SqliteDesignTimeServices);

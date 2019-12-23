@@ -1,13 +1,13 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 #if NET461
-
 using System;
 using System.Collections;
 using System.IO;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Tools.Properties;
 
 namespace Microsoft.EntityFrameworkCore.Tools
@@ -23,8 +23,9 @@ namespace Microsoft.EntityFrameworkCore.Tools
             string startupAssembly,
             string projectDir,
             string dataDirectory,
-            string rootNamespace)
-            : base(assembly, startupAssembly, projectDir, dataDirectory, rootNamespace)
+            string rootNamespace,
+            string language)
+            : base(assembly, startupAssembly, projectDir, rootNamespace, language)
         {
             var info = new AppDomainSetup { ApplicationBase = AppBasePath };
 
@@ -63,7 +64,9 @@ namespace Microsoft.EntityFrameworkCore.Tools
                         { "targetName", AssemblyFileName },
                         { "startupTargetName", StartupAssemblyFileName },
                         { "projectDir", ProjectDirectory },
-                        { "rootNamespace", RootNamespace }
+                        { "rootNamespace", RootNamespace },
+                        { "language", Language },
+                        { "toolsVersion", ProductInfo.GetVersion() }
                     }
                 },
                 null,

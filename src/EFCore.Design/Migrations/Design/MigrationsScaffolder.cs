@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -22,7 +21,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
     /// <summary>
     ///     Used to scaffold new migrations.
     /// </summary>
-    public class MigrationsScaffolder
+    public class MigrationsScaffolder : IMigrationsScaffolder
     {
         private readonly Type _contextType;
         private readonly string _activeProvider;
@@ -35,7 +34,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
         {
             Check.NotNull(dependencies, nameof(dependencies));
 
-            _contextType = dependencies.CurrentDbContext.Context.GetType();
+            _contextType = dependencies.CurrentContext.Context.GetType();
             _activeProvider = dependencies.DatabaseProvider.Name;
             Dependencies = dependencies;
         }
@@ -55,7 +54,22 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
         public virtual ScaffoldedMigration ScaffoldMigration(
             [NotNull] string migrationName,
             [NotNull] string rootNamespace,
-            [CanBeNull] string subNamespace = null)
+            [CanBeNull] string subNamespace)
+            => ScaffoldMigration(migrationName, rootNamespace, subNamespace, language: null);
+
+        /// <summary>
+        ///     Scaffolds a new migration.
+        /// </summary>
+        /// <param name="migrationName"> The migration's name. </param>
+        /// <param name="rootNamespace"> The project's root namespace. </param>
+        /// <param name="subNamespace"> The migration's sub-namespace. </param>
+        /// <param name="language"> The project's language. </param>
+        /// <returns> The scaffolded migration. </returns>
+        public virtual ScaffoldedMigration ScaffoldMigration(
+            string migrationName,
+            string rootNamespace,
+            string subNamespace = null,
+            string language = null)
         {
             Check.NotEmpty(migrationName, nameof(migrationName));
             Check.NotEmpty(rootNamespace, nameof(rootNamespace));
@@ -97,7 +111,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
 
                     if (sanitizedContextName.EndsWith("Context", StringComparison.Ordinal))
                     {
-                        builder.Append(sanitizedContextName.Substring(0, sanitizedContextName.Length - 7));
+                        builder.Append(sanitizedContextName, 0, sanitizedContextName.Length - 7);
                     }
                     else
                     {
@@ -117,7 +131,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
             var modelSnapshot = Dependencies.MigrationsAssembly.ModelSnapshot;
             var lastModel = Dependencies.SnapshotModelProcessor.Process(modelSnapshot?.Model);
             var upOperations = Dependencies.MigrationsModelDiffer.GetDifferences(lastModel, Dependencies.Model);
-            var downOperations = upOperations.Any()
+            var downOperations = upOperations.Count > 0
                 ? Dependencies.MigrationsModelDiffer.GetDifferences(Dependencies.Model, lastModel)
                 : new List<MigrationOperation>();
             var migrationId = Dependencies.MigrationsIdGenerator.GenerateId(migrationName);
@@ -140,25 +154,26 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                 Dependencies.OperationReporter.WriteWarning(DesignStrings.DestructiveOperation);
             }
 
-            var migrationCode = Dependencies.MigrationCodeGenerator.GenerateMigration(
+            var codeGenerator = Dependencies.MigrationsCodeGeneratorSelector.Select(language);
+            var migrationCode = codeGenerator.GenerateMigration(
                 migrationNamespace,
                 migrationName,
                 upOperations,
                 downOperations);
-            var migrationMetadataCode = Dependencies.MigrationCodeGenerator.GenerateMetadata(
+            var migrationMetadataCode = codeGenerator.GenerateMetadata(
                 migrationNamespace,
                 _contextType,
                 migrationName,
                 migrationId,
                 Dependencies.Model);
-            var modelSnapshotCode = Dependencies.MigrationCodeGenerator.GenerateSnapshot(
+            var modelSnapshotCode = codeGenerator.GenerateSnapshot(
                 modelSnapshotNamespace,
                 _contextType,
                 modelSnapshotName,
                 Dependencies.Model);
 
             return new ScaffoldedMigration(
-                Dependencies.MigrationCodeGenerator.FileExtension,
+                codeGenerator.FileExtension,
                 lastMigration.Key,
                 migrationCode,
                 migrationId,
@@ -189,8 +204,23 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
         /// <param name="rootNamespace"> The project's root namespace. </param>
         /// <param name="force"> Don't check to see if the migration has been applied to the database. </param>
         /// <returns> The removed migration files. </returns>
-        // TODO: DRY (file names)
         public virtual MigrationFiles RemoveMigration([NotNull] string projectDir, [NotNull] string rootNamespace, bool force)
+            => RemoveMigration(projectDir, rootNamespace, force, language: null);
+
+        /// <summary>
+        ///     Removes the previous migration.
+        /// </summary>
+        /// <param name="projectDir"> The project's root directory. </param>
+        /// <param name="rootNamespace"> The project's root namespace. </param>
+        /// <param name="force"> Don't check to see if the migration has been applied to the database. </param>
+        /// <param name="language"> The project's language. </param>
+        /// <returns> The removed migration files. </returns>
+        // TODO: DRY (file names)
+        public virtual MigrationFiles RemoveMigration(
+            string projectDir,
+            string rootNamespace,
+            bool force,
+            string language)
         {
             Check.NotEmpty(projectDir, nameof(projectDir));
             Check.NotEmpty(rootNamespace, nameof(rootNamespace));
@@ -203,7 +233,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                 throw new OperationException(DesignStrings.NoSnapshot);
             }
 
-            var language = Dependencies.MigrationCodeGenerator.FileExtension;
+            var codeGenerator = Dependencies.MigrationsCodeGeneratorSelector.Select(language);
 
             IModel model = null;
             var migrations = Dependencies.MigrationsAssembly.Migrations
@@ -214,19 +244,38 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                 var migration = migrations[migrations.Count - 1];
                 model = migration.TargetModel;
 
-                if (!Dependencies.MigrationsModelDiffer.HasDifferences(model, Dependencies.SnapshotModelProcessor.Process(modelSnapshot.Model)))
+                if (!Dependencies.MigrationsModelDiffer.HasDifferences(
+                    model, Dependencies.SnapshotModelProcessor.Process(modelSnapshot.Model)))
                 {
-                    if (force)
+                    var applied = false;
+                    try
                     {
-                        Dependencies.OperationReporter.WriteWarning(DesignStrings.ForceRemoveMigration(migration.GetId()));
+                        applied = Dependencies.HistoryRepository.GetAppliedMigrations().Any(
+                            e => e.MigrationId.Equals(migration.GetId(), StringComparison.OrdinalIgnoreCase));
                     }
-                    else if (Dependencies.HistoryRepository.GetAppliedMigrations().Any(
-                        e => e.MigrationId.Equals(migration.GetId(), StringComparison.OrdinalIgnoreCase)))
+                    catch (Exception ex) when (force)
                     {
-                        throw new OperationException(DesignStrings.RevertMigration(migration.GetId()));
+                        Dependencies.OperationReporter.WriteVerbose(ex.ToString());
+                        Dependencies.OperationReporter.WriteWarning(
+                            DesignStrings.ForceRemoveMigration(migration.GetId(), ex.Message));
                     }
 
-                    var migrationFileName = migration.GetId() + language;
+                    if (applied)
+                    {
+                        if (force)
+                        {
+                            Dependencies.Migrator.Migrate(
+                                migrations.Count > 1
+                                    ? migrations[migrations.Count - 2].GetId()
+                                    : Migration.InitialDatabase);
+                        }
+                        else
+                        {
+                            throw new OperationException(DesignStrings.RevertMigration(migration.GetId()));
+                        }
+                    }
+
+                    var migrationFileName = migration.GetId() + codeGenerator.FileExtension;
                     var migrationFile = TryGetProjectFile(projectDir, migrationFileName);
                     if (migrationFile != null)
                     {
@@ -240,7 +289,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                             DesignStrings.NoMigrationFile(migrationFileName, migration.GetType().ShortDisplayName()));
                     }
 
-                    var migrationMetadataFileName = migration.GetId() + ".Designer" + language;
+                    var migrationMetadataFileName = migration.GetId() + ".Designer" + codeGenerator.FileExtension;
                     var migrationMetadataFile = TryGetProjectFile(projectDir, migrationMetadataFileName);
                     if (migrationMetadataFile != null)
                     {
@@ -264,7 +313,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
             }
 
             var modelSnapshotName = modelSnapshot.GetType().Name;
-            var modelSnapshotFileName = modelSnapshotName + language;
+            var modelSnapshotFileName = modelSnapshotName + codeGenerator.FileExtension;
             var modelSnapshotFile = TryGetProjectFile(projectDir, modelSnapshotFileName);
             if (model == null)
             {
@@ -285,8 +334,8 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
             else
             {
                 var modelSnapshotNamespace = modelSnapshot.GetType().Namespace;
-                Debug.Assert(!string.IsNullOrEmpty(modelSnapshotNamespace));
-                var modelSnapshotCode = Dependencies.MigrationCodeGenerator.GenerateSnapshot(
+                Check.DebugAssert(!string.IsNullOrEmpty(modelSnapshotNamespace), "modelSnapshotNamespace is null or empty");
+                var modelSnapshotCode = codeGenerator.GenerateSnapshot(
                     modelSnapshotNamespace,
                     _contextType,
                     modelSnapshotName,
@@ -311,12 +360,9 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
         /// </summary>
         /// <param name="projectDir"> The project's root directory. </param>
         /// <param name="migration"> The scaffolded migration. </param>
-        /// <param name="outputDir"> The directory to put files in. Paths are relaive to the project directory. </param>
+        /// <param name="outputDir"> The directory to put files in. Paths are relative to the project directory. </param>
         /// <returns> The saved migrations files. </returns>
-        public virtual MigrationFiles Save(
-            [NotNull] string projectDir,
-            [NotNull] ScaffoldedMigration migration,
-            [CanBeNull] string outputDir)
+        public virtual MigrationFiles Save(string projectDir, ScaffoldedMigration migration, string outputDir)
         {
             Check.NotEmpty(projectDir, nameof(projectDir));
             Check.NotNull(migration, nameof(migration));
@@ -340,9 +386,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
 
             return new MigrationFiles
             {
-                MigrationFile = migrationFile,
-                MetadataFile = migrationMetadataFile,
-                SnapshotFile = modelSnapshotFile
+                MigrationFile = migrationFile, MetadataFile = migrationMetadataFile, SnapshotFile = modelSnapshotFile
             };
         }
 
@@ -413,7 +457,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
             Directory.EnumerateFiles(projectDir, fileName, SearchOption.AllDirectories).FirstOrDefault();
 
         private bool ContainsForeignMigrations(string migrationsNamespace)
-            => (from t in Dependencies.MigrationsAssembly.Assembly.GetConstructableTypes()
+            => (from t in Dependencies.MigrationsAssembly.Assembly.GetConstructibleTypes()
                 where t.Namespace == migrationsNamespace
                       && t.IsSubclassOf(typeof(Migration))
                 let contextTypeAttribute = t.GetCustomAttribute<DbContextAttribute>()

@@ -19,18 +19,24 @@ namespace Microsoft.EntityFrameworkCore.Diagnostics
         /// <summary>
         ///     Creates an event definition instance.
         /// </summary>
+        /// <param name="loggingOptions"> Logging options. </param>
         /// <param name="eventId"> The <see cref="EventId" />. </param>
-        /// <param name="level"> The <see cref="Microsoft.Extensions.Logging.LogLevel" /> at which the event will be logged. </param>
-        /// <param name="logAction"> A cached delegate for logging the event. </param>
+        /// <param name="level"> The <see cref="LogLevel" /> at which the event will be logged. </param>
+        /// <param name="eventIdCode">
+        ///     A string representing the code that should be passed to <see cref="DbContextOptionsBuilder.ConfigureWarnings" />.
+        /// </param>
+        /// <param name="logActionFunc"> Function to create a cached delegate for logging the event. </param>
         public EventDefinition(
+            [NotNull] ILoggingOptions loggingOptions,
             EventId eventId,
             LogLevel level,
-            [NotNull] Action<ILogger, TParam1, TParam2, TParam3, Exception> logAction)
-            : base(eventId, level)
+            [NotNull] string eventIdCode,
+            [NotNull] Func<LogLevel, Action<ILogger, TParam1, TParam2, TParam3, Exception>> logActionFunc)
+            : base(loggingOptions, eventId, level, eventIdCode)
         {
-            Check.NotNull(logAction, nameof(logAction));
+            Check.NotNull(logActionFunc, nameof(logActionFunc));
 
-            _logAction = logAction;
+            _logAction = logActionFunc(Level);
         }
 
         /// <summary>
@@ -70,7 +76,7 @@ namespace Microsoft.EntityFrameworkCore.Diagnostics
             [CanBeNull] Exception exception = null)
             where TLoggerCategory : LoggerCategory<TLoggerCategory>, new()
         {
-            switch (logger.GetLogBehavior(EventId, Level))
+            switch (WarningBehavior)
             {
                 case WarningBehavior.Log:
                     _logAction(logger.Logger, arg1, arg2, arg3, exception);

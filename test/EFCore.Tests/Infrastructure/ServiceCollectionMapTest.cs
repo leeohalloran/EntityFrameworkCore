@@ -11,10 +11,12 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
 {
     public class ServiceCollectionMapTest
     {
-        [Fact]
+        [ConditionalFact]
         public void Can_add_delegate_services()
         {
+#pragma warning disable IDE0039 // Use local function
             Func<IServiceProvider, FakeService> factory = p => new FakeService();
+#pragma warning restore IDE0039 // Use local function
 
             AddServiceDelegateTest(m => m.TryAddTransient<IFakeService, FakeService>(factory), factory, ServiceLifetime.Transient);
             AddServiceDelegateTest(m => m.TryAddScoped<IFakeService, FakeService>(factory), factory, ServiceLifetime.Scoped);
@@ -41,7 +43,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
             Assert.Equal(lifetime, descriptor.Lifetime);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_add_concrete_services()
         {
             AddServiceConcreteTest(m => m.TryAddTransient<IFakeService, DerivedFakeService>(), ServiceLifetime.Transient);
@@ -65,7 +67,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
             Assert.Equal(lifetime, descriptor.Lifetime);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_add_instance_services()
         {
             var instance = new FakeService();
@@ -87,7 +89,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
             Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Existing_services_are_not_replaced()
         {
             ExistingServiceTest(m => m.TryAddTransient<IFakeService, FakeService>());
@@ -122,7 +124,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
             Assert.Same(descriptor, serviceCollection.Single());
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_add_multiple_concrete_services()
         {
             AddServiceConcreteEnumerableTest(
@@ -175,11 +177,13 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
             Assert.Equal(lifetime, serviceCollection[1].Lifetime);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_add_multiple_delegate_services()
         {
+#pragma warning disable IDE0039 // Use local function
             Func<IServiceProvider, FakeService> factory1 = p => new FakeService();
             Func<IServiceProvider, DerivedFakeService> factory2 = p => new DerivedFakeService();
+#pragma warning restore IDE0039 // Use local function
 
             AddServiceDelegateEnumerableTest(
                 m => m.TryAddTransientEnumerable<IFakeService, FakeService>(factory1),
@@ -218,7 +222,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
             Assert.Equal(lifetime, serviceCollection[1].Lifetime);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_add_multiple_instance_services()
         {
             var instance1 = new FakeService();
@@ -264,7 +268,9 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
             public DbContext Context { get; private set; }
 
             void IPatchServiceInjectionSite.InjectServices(IServiceProvider serviceProvider)
-                => Context = serviceProvider.GetService<ICurrentDbContext>().Context;
+            {
+                Context = serviceProvider.GetService<ICurrentDbContext>().Context;
+            }
         }
 
         private class DerivedFakeService : FakeService

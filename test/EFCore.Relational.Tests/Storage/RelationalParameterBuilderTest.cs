@@ -1,22 +1,28 @@
 ﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System.Collections.Generic;
 using System.Data;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.EntityFrameworkCore.Storage.Internal;
-using Microsoft.EntityFrameworkCore.TestUtilities.FakeProvider;
+using Microsoft.EntityFrameworkCore.TestUtilities;
 using Xunit;
 
 namespace Microsoft.EntityFrameworkCore.Storage
 {
     public class RelationalParameterBuilderTest
     {
-        [Fact]
+        [ConditionalFact]
         public void Can_add_dynamic_parameter()
         {
-            var typeMapper = new FakeRelationalTypeMapper(new RelationalTypeMapperDependencies());
+            var typeMapper = new TestRelationalTypeMappingSource(
+                TestServiceFactory.Instance.Create<TypeMappingSourceDependencies>(),
+                TestServiceFactory.Instance.Create<RelationalTypeMappingSourceDependencies>());
 
-            var parameterBuilder = new RelationalParameterBuilder(typeMapper);
+            var parameterBuilder = new RelationalCommandBuilder(
+                new RelationalCommandBuilderDependencies(
+                    typeMapper));
 
             parameterBuilder.AddParameter(
                 "InvariantName",
@@ -31,14 +37,19 @@ namespace Microsoft.EntityFrameworkCore.Storage
             Assert.Equal("Name", parameter.Name);
         }
 
-        [Theory]
+        [ConditionalTheory]
         [InlineData(true)]
         [InlineData(false)]
         public void Can_add_type_mapped_parameter_by_type(bool nullable)
         {
-            var typeMapper = new FakeRelationalTypeMapper(new RelationalTypeMapperDependencies());
-            var typeMapping = typeMapper.GetMapping(nullable ? typeof(int?) : typeof(int));
-            var parameterBuilder = new RelationalParameterBuilder(typeMapper);
+            var typeMapper = (IRelationalTypeMappingSource)new TestRelationalTypeMappingSource(
+                TestServiceFactory.Instance.Create<TypeMappingSourceDependencies>(),
+                TestServiceFactory.Instance.Create<RelationalTypeMappingSourceDependencies>());
+            var typeMapping = typeMapper.FindMapping(nullable ? typeof(int?) : typeof(int));
+
+            var parameterBuilder = new RelationalCommandBuilder(
+                new RelationalCommandBuilderDependencies(
+                    typeMapper));
 
             parameterBuilder.AddParameter(
                 "InvariantName",
@@ -57,17 +68,22 @@ namespace Microsoft.EntityFrameworkCore.Storage
             Assert.Equal(nullable, parameter.IsNullable);
         }
 
-        [Theory]
+        [ConditionalTheory]
         [InlineData(true)]
         [InlineData(false)]
         public void Can_add_type_mapped_parameter_by_property(bool nullable)
         {
-            var typeMapper = new FakeRelationalTypeMapper(new RelationalTypeMapperDependencies());
+            var typeMapper = new TestRelationalTypeMappingSource(
+                TestServiceFactory.Instance.Create<TypeMappingSourceDependencies>(),
+                TestServiceFactory.Instance.Create<RelationalTypeMappingSourceDependencies>());
 
-            var property = new Model().AddEntityType("MyType").AddProperty("MyProp", typeof(string));
+            var property = ((IMutableModel)new Model()).AddEntityType("MyType").AddProperty("MyProp", typeof(string));
             property.IsNullable = nullable;
+            property[CoreAnnotationNames.TypeMapping] = GetMapping(typeMapper, property);
 
-            var parameterBuilder = new RelationalParameterBuilder(typeMapper);
+            var parameterBuilder = new RelationalCommandBuilder(
+                new RelationalCommandBuilderDependencies(
+                    typeMapper));
 
             parameterBuilder.AddParameter(
                 "InvariantName",
@@ -81,33 +97,36 @@ namespace Microsoft.EntityFrameworkCore.Storage
             Assert.NotNull(parameter);
             Assert.Equal("InvariantName", parameter.InvariantName);
             Assert.Equal("Name", parameter.Name);
-            Assert.Equal(typeMapper.GetMapping(property), parameter.RelationalTypeMapping);
+            Assert.Equal(GetMapping(typeMapper, property), parameter.RelationalTypeMapping);
             Assert.Equal(nullable, parameter.IsNullable);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_add_composite_parameter()
         {
-            var typeMapper = new FakeRelationalTypeMapper(new RelationalTypeMapperDependencies());
+            var typeMapper = new TestRelationalTypeMappingSource(
+                TestServiceFactory.Instance.Create<TypeMappingSourceDependencies>(),
+                TestServiceFactory.Instance.Create<RelationalTypeMappingSourceDependencies>());
 
-            var parameterBuilder = new RelationalParameterBuilder(typeMapper);
+            var parameterBuilder = new RelationalCommandBuilder(
+                new RelationalCommandBuilderDependencies(
+                    typeMapper));
 
             parameterBuilder.AddCompositeParameter(
                 "CompositeInvariant",
-                builder =>
-                    {
-                        builder.AddParameter(
-                            "FirstInvariant",
-                            "FirstName",
-                            new IntTypeMapping("int", DbType.Int32),
-                            nullable: false);
-
-                        builder.AddParameter(
-                            "SecondInvariant",
-                            "SecondName",
-                            new StringTypeMapping("nvarchar(max)"),
-                            nullable: true);
-                    });
+                new List<IRelationalParameter>
+                {
+                    new TypeMappedRelationalParameter(
+                        "FirstInvariant",
+                        "FirstName",
+                        new IntTypeMapping("int", DbType.Int32),
+                        nullable: false),
+                    new TypeMappedRelationalParameter(
+                        "SecondInvariant",
+                        "SecondName",
+                        new StringTypeMapping("nvarchar(max)"),
+                        nullable: true)
+                });
 
             Assert.Equal(1, parameterBuilder.Parameters.Count);
 
@@ -118,18 +137,27 @@ namespace Microsoft.EntityFrameworkCore.Storage
             Assert.Equal(2, parameter.RelationalParameters.Count);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Does_not_add_empty_composite_parameter()
         {
-            var typeMapper = new FakeRelationalTypeMapper(new RelationalTypeMapperDependencies());
+            var typeMapper = new TestRelationalTypeMappingSource(
+                TestServiceFactory.Instance.Create<TypeMappingSourceDependencies>(),
+                TestServiceFactory.Instance.Create<RelationalTypeMappingSourceDependencies>());
 
-            var parameterBuilder = new RelationalParameterBuilder(typeMapper);
+            var parameterBuilder = new RelationalCommandBuilder(
+                new RelationalCommandBuilderDependencies(
+                    typeMapper));
 
             parameterBuilder.AddCompositeParameter(
                 "CompositeInvariant",
-                builder => { });
+                new List<IRelationalParameter>());
 
             Assert.Equal(0, parameterBuilder.Parameters.Count);
         }
+
+        public static RelationalTypeMapping GetMapping(
+            IRelationalTypeMappingSource typeMappingSource,
+            IProperty property)
+            => typeMappingSource.FindMapping(property);
     }
 }

@@ -2,17 +2,11 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Internal;
-using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Migrations;
-using Microsoft.EntityFrameworkCore.Migrations.Design;
-using Microsoft.EntityFrameworkCore.Migrations.Internal;
-using Microsoft.EntityFrameworkCore.Scaffolding.Internal;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Utilities;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,113 +14,132 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Microsoft.EntityFrameworkCore.Design.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///     any release. You should only use it directly in your code with extreme caution and knowing that
+    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
     public class DesignTimeServicesBuilder
     {
+        private readonly Assembly _assembly;
         private readonly Assembly _startupAssembly;
         private readonly IOperationReporter _reporter;
+        private readonly string[] _args;
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public DesignTimeServicesBuilder([NotNull] Assembly startupAssembly, [NotNull] IOperationReporter reporter)
+        public DesignTimeServicesBuilder(
+            [NotNull] Assembly assembly,
+            [NotNull] Assembly startupAssembly,
+            [NotNull] IOperationReporter reporter,
+            [NotNull] string[] args)
         {
             _startupAssembly = startupAssembly;
             _reporter = reporter;
+            _args = args;
+            _assembly = assembly;
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual IServiceProvider Build([NotNull] DbContext context)
         {
             Check.NotNull(context, nameof(context));
 
-            var services = ConfigureServices(new ServiceCollection());
-
-            var contextServices = ((IInfrastructure<IServiceProvider>)context).Instance;
-            ConfigureContextServices(((IInfrastructure<IServiceProvider>)context).Instance, services);
-
-            ConfigureProviderServices(contextServices.GetRequiredService<IDatabaseProvider>().Name, services);
-
+            var services = new ServiceCollection()
+                .AddEntityFrameworkDesignTimeServices(_reporter)
+                .AddDbContextDesignTimeServices(context);
+            var provider = context.GetService<IDatabaseProvider>().Name;
+            ConfigureProviderServices(provider, services);
+            ConfigureReferencedServices(services, provider);
             ConfigureUserServices(services);
 
             return services.BuildServiceProvider();
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual IServiceProvider Build([NotNull] string provider)
-            => ConfigureUserServices(
-                    ConfigureProviderServices(
-                        Check.NotEmpty(provider, nameof(provider)),
-                        ConfigureServices(new ServiceCollection()), throwOnError: true))
-                .BuildServiceProvider();
+        {
+            Check.NotEmpty(provider, nameof(provider));
 
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        protected virtual IServiceCollection ConfigureServices([NotNull] IServiceCollection services)
-            => services
-                .AddSingleton<ICSharpHelper, CSharpHelper>()
-                .AddSingleton<CSharpMigrationOperationGeneratorDependencies>()
-                .AddSingleton<ICSharpMigrationOperationGenerator, CSharpMigrationOperationGenerator>()
-                .AddSingleton<CSharpSnapshotGeneratorDependencies>()
-                .AddSingleton<ICSharpSnapshotGenerator, CSharpSnapshotGenerator>()
-                .AddSingleton<MigrationsCodeGeneratorDependencies>()
-                .AddSingleton<CSharpMigrationsGeneratorDependencies>()
-                .AddSingleton<IMigrationsCodeGenerator, CSharpMigrationsGenerator>()
-                .AddSingleton(_reporter)
-                .AddScaffolding(_reporter);
+            var services = new ServiceCollection()
+                .AddEntityFrameworkDesignTimeServices(_reporter, GetApplicationServices);
+            ConfigureProviderServices(provider, services, throwOnError: true);
+            ConfigureReferencedServices(services, provider);
+            ConfigureUserServices(services);
 
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        protected virtual IServiceCollection ConfigureContextServices(
-            [NotNull] IServiceProvider contextServices,
-            [NotNull] IServiceCollection services)
-            => services
-                .AddTransient<MigrationsScaffolderDependencies>()
-                .AddTransient<MigrationsScaffolder>()
-                .AddTransient<ISnapshotModelProcessor, SnapshotModelProcessor>()
-                .AddTransient(_ => contextServices.GetService<ICurrentDbContext>())
-                .AddTransient(_ => contextServices.GetService<IDatabaseProvider>())
-                .AddTransient(_ => contextServices.GetService<IDbContextOptions>())
-                .AddTransient(_ => contextServices.GetService<IHistoryRepository>())
-                .AddTransient(_ => contextServices.GetService<IMigrationsAssembly>())
-                .AddTransient(_ => contextServices.GetService<IMigrationsIdGenerator>())
-                .AddTransient(_ => contextServices.GetService<IMigrationsModelDiffer>())
-                .AddTransient(_ => contextServices.GetService<IMigrator>())
-                .AddTransient(_ => contextServices.GetService<IModel>());
+            return services.BuildServiceProvider();
+        }
 
-        private IServiceCollection ConfigureUserServices(IServiceCollection services)
+        private IServiceProvider GetApplicationServices()
+            => new AppServiceProviderFactory(_startupAssembly, _reporter).Create(_args);
+
+        private void ConfigureUserServices(IServiceCollection services)
         {
             _reporter.WriteVerbose(DesignStrings.FindingDesignTimeServices(_startupAssembly.GetName().Name));
 
             var designTimeServicesType = _startupAssembly.GetLoadableDefinedTypes()
-                .Where(t => typeof(IDesignTimeServices).GetTypeInfo().IsAssignableFrom(t)).Select(t => t.AsType())
+                .Where(t => typeof(IDesignTimeServices).IsAssignableFrom(t)).Select(t => t.AsType())
                 .FirstOrDefault();
             if (designTimeServicesType == null)
             {
                 _reporter.WriteVerbose(DesignStrings.NoDesignTimeServices);
 
-                return services;
+                return;
             }
 
             _reporter.WriteVerbose(DesignStrings.UsingDesignTimeServices(designTimeServicesType.ShortDisplayName()));
 
-            return ConfigureDesignTimeServices(designTimeServicesType, services);
+            ConfigureDesignTimeServices(designTimeServicesType, services);
         }
 
-        private IServiceCollection ConfigureProviderServices(string provider, IServiceCollection services, bool throwOnError = false)
+        private void ConfigureReferencedServices(IServiceCollection services, string provider)
+        {
+            _reporter.WriteVerbose(DesignStrings.FindingReferencedServices(_startupAssembly.GetName().Name));
+
+            var references = _startupAssembly.GetCustomAttributes<DesignTimeServicesReferenceAttribute>()
+                .Concat(_assembly.GetCustomAttributes<DesignTimeServicesReferenceAttribute>())
+                .Distinct()
+                .ToList();
+
+            if (references.Count == 0)
+            {
+                _reporter.WriteVerbose(DesignStrings.NoReferencedServices);
+
+                return;
+            }
+
+            foreach (var reference in references)
+            {
+                if (reference.ForProvider != null
+                    && !string.Equals(reference.ForProvider, provider, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var designTimeServicesType = Type.GetType(reference.TypeName, throwOnError: true);
+
+                _reporter.WriteVerbose(
+                    DesignStrings.UsingReferencedServices(designTimeServicesType.Assembly.GetName().Name));
+
+                ConfigureDesignTimeServices(designTimeServicesType, services);
+            }
+        }
+
+        private void ConfigureProviderServices(string provider, IServiceCollection services, bool throwOnError = false)
         {
             _reporter.WriteVerbose(DesignStrings.FindingProviderServices(provider));
 
@@ -143,7 +156,7 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
                 {
                     _reporter.WriteVerbose(message);
 
-                    return services;
+                    return;
                 }
 
                 throw new OperationException(message, ex);
@@ -160,7 +173,7 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
                 {
                     _reporter.WriteVerbose(message);
 
-                    return services;
+                    return;
                 }
 
                 throw new InvalidOperationException(message);
@@ -173,19 +186,17 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
 
             _reporter.WriteVerbose(DesignStrings.UsingProviderServices(provider));
 
-            return ConfigureDesignTimeServices(designTimeServicesType, services);
+            ConfigureDesignTimeServices(designTimeServicesType, services);
         }
 
-        private static IServiceCollection ConfigureDesignTimeServices(
+        private static void ConfigureDesignTimeServices(
             Type designTimeServicesType,
             IServiceCollection services)
         {
-            Debug.Assert(designTimeServicesType != null, "designTimeServicesType is null.");
+            Check.DebugAssert(designTimeServicesType != null, "designTimeServicesType is null.");
 
             var designTimeServices = (IDesignTimeServices)Activator.CreateInstance(designTimeServicesType);
             designTimeServices.ConfigureDesignTimeServices(services);
-
-            return services;
         }
     }
 }

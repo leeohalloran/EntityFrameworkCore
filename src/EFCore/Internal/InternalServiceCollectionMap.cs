@@ -3,23 +3,27 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using JetBrains.Annotations;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.EntityFrameworkCore.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///     any release. You should only use it directly in your code with extreme caution and knowing that
+    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
     public class InternalServiceCollectionMap
     {
         private readonly IDictionary<Type, IList<int>> _serviceMap = new Dictionary<Type, IList<int>>();
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public InternalServiceCollectionMap([NotNull] IServiceCollection serviceCollection)
         {
@@ -34,29 +38,35 @@ namespace Microsoft.EntityFrameworkCore.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual IServiceCollection ServiceCollection { get; }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual IList<int> GetOrCreateDescriptorIndexes([NotNull] Type serviceType)
         {
-            IList<int> indexes;
-            if (!_serviceMap.TryGetValue(serviceType, out indexes))
+            if (!_serviceMap.TryGetValue(serviceType, out var indexes))
             {
                 indexes = new List<int>();
                 _serviceMap[serviceType] = indexes;
             }
+
             return indexes;
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual void AddNewDescriptor([NotNull] IList<int> indexes, [NotNull] ServiceDescriptor newDescriptor)
         {
@@ -65,22 +75,28 @@ namespace Microsoft.EntityFrameworkCore.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual InternalServiceCollectionMap AddDependencySingleton<TDependencies>()
             => AddDependency(typeof(TDependencies), ServiceLifetime.Singleton);
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual InternalServiceCollectionMap AddDependencyScoped<TDependencies>()
             => AddDependency(typeof(TDependencies), ServiceLifetime.Scoped);
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual InternalServiceCollectionMap AddDependency([NotNull] Type serviceType, ServiceLifetime lifetime)
         {
@@ -90,7 +106,7 @@ namespace Microsoft.EntityFrameworkCore.Internal
                 AddNewDescriptor(indexes, new ServiceDescriptor(serviceType, serviceType, lifetime));
             }
             else if (indexes.Count > 1
-                     || ServiceCollection[indexes[0]].ImplementationType != serviceType)
+                || ServiceCollection[indexes[0]].ImplementationType != serviceType)
             {
                 throw new InvalidOperationException(CoreStrings.BadDependencyRegistration(serviceType.Name));
             }
@@ -100,8 +116,10 @@ namespace Microsoft.EntityFrameworkCore.Internal
 
         /// <summary>
         ///     <para>
-        ///         This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///         directly from your code. This API may change or be removed in future releases.
+        ///         This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///         the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///         any release. You should only use it directly in your code with extreme caution and knowing that
+        ///         doing so can result in application failures when updating to a new Entity Framework Core release.
         ///     </para>
         ///     <para>
         ///         Re-writes the registration for the given service such that if the implementation type
@@ -120,8 +138,7 @@ namespace Microsoft.EntityFrameworkCore.Internal
         public virtual InternalServiceCollectionMap DoPatchInjection<TService>()
             where TService : class
         {
-            IList<int> indexes;
-            if (_serviceMap.TryGetValue(typeof(TService), out indexes))
+            if (_serviceMap.TryGetValue(typeof(TService), out var indexes))
             {
                 foreach (var index in indexes)
                 {

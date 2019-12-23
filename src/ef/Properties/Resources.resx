@@ -178,7 +178,7 @@
     <value>Overwrite existing files.</value>
   </data>
   <data name="EFFullName" xml:space="preserve">
-    <value>Entity Framework Core Command Line Tools</value>
+    <value>Entity Framework Core Command-line Tools</value>
   </data>
   <data name="IdempotentDescription" xml:space="preserve">
     <value>Generate a script that can be used on a database at any migration.</value>
@@ -214,7 +214,7 @@
     <value>Removes the last migration.</value>
   </data>
   <data name="MigrationsRemoveForceDescription" xml:space="preserve">
-    <value>Don't check to see if the migration has been applied to the database.</value>
+    <value>Revert the migration if it has been applied to the database.</value>
   </data>
   <data name="MigrationsScriptDescription" xml:space="preserve">
     <value>Generates a SQL script from migrations.</value>
@@ -227,9 +227,6 @@
   </data>
   <data name="MissingOption" xml:space="preserve">
     <value>Missing required option '--{option}'.</value>
-  </data>
-  <data name="NoAppDomainDescription" xml:space="preserve">
-    <value>Don't use app domains. Always implied on .NET Core.</value>
   </data>
   <data name="NoColorDescription" xml:space="preserve">
     <value>Don't colorize output.</value>
@@ -308,5 +305,17 @@
   </data>
   <data name="Options" xml:space="preserve">
     <value>Options: {options}</value>
+  </data>
+  <data name="LanguageDescription" xml:space="preserve">
+    <value>The language. Defaults to 'C#'.</value>
+  </data>
+  <data name="ContextDirDescription" xml:space="preserve">
+    <value>The directory to put DbContext file in. Paths are relative to the project directory.</value>
+  </data>
+  <data name="WorkingDirDescription" xml:space="preserve">
+    <value>The working directory of the tool invoking this command.</value>
+  </data>
+  <data name="DbContextScriptDescription" xml:space="preserve">
+    <value>Generate a script to create all tables for the DbContext.</value>
   </data>
 </root>

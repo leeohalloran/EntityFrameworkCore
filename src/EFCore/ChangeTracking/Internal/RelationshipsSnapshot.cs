@@ -2,22 +2,22 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System.Collections.Generic;
-using System.Diagnostics;
 using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Microsoft.EntityFrameworkCore.Utilities;
 
 namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
 {
     public abstract partial class InternalEntityEntry
     {
-        private struct RelationshipsSnapshot
+        private readonly struct RelationshipsSnapshot
         {
             private readonly ISnapshot _values;
 
             public RelationshipsSnapshot(InternalEntityEntry entry)
             {
-                _values = entry.EntityType.GetRelationshipSnapshotFactory()(entry);
+                _values = ((EntityType)entry.EntityType).RelationshipSnapshotFactory(entry);
             }
 
             public object GetValue(InternalEntityEntry entry, IPropertyBase propertyBase)
@@ -32,18 +32,34 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
             {
                 if (value == null)
                 {
-                    var property = propertyBase as IProperty;
-                    if (property != null
+                    if (propertyBase is IProperty property
                         && !property.IsNullable)
                     {
                         return;
                     }
                 }
 
-                Debug.Assert(!IsEmpty);
-                Debug.Assert(!(propertyBase is INavigation) || !((INavigation)propertyBase).IsCollection());
+                Check.DebugAssert(!IsEmpty, "relationship snapshot is empty");
+                Check.DebugAssert(
+                    !(propertyBase is INavigation) || !((INavigation)propertyBase).IsCollection(),
+                    $"property {propertyBase} is is not reference navigation");
 
-                _values[propertyBase.GetRelationshipIndex()] = value;
+                _values[propertyBase.GetRelationshipIndex()] = SnapshotValue(propertyBase, value);
+            }
+
+            private static object SnapshotValue(IPropertyBase propertyBase, object value)
+            {
+                if (propertyBase is IProperty property)
+                {
+                    var comparer = property.GetKeyValueComparer() ?? property.GetTypeMapping().KeyComparer;
+
+                    if (comparer != null)
+                    {
+                        return comparer.Snapshot(value);
+                    }
+                }
+
+                return value;
             }
 
             public void RemoveFromCollection(IPropertyBase propertyBase, object removedEntity)
@@ -58,7 +74,6 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
             public void AddToCollection(IPropertyBase propertyBase, object addedEntity)
             {
                 var index = propertyBase.GetRelationshipIndex();
-
                 if (index != -1)
                 {
                     var snapshot = GetOrCreateCollection(index);
@@ -70,7 +85,6 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
             public void AddRangeToCollection(IPropertyBase propertyBase, IEnumerable<object> addedEntities)
             {
                 var index = propertyBase.GetRelationshipIndex();
-
                 if (index != -1)
                 {
                     var snapshot = GetOrCreateCollection(index);

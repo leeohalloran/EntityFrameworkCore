@@ -8,112 +8,79 @@ using System.Linq;
 using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Design.Internal;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
-using Microsoft.EntityFrameworkCore.Metadata.Conventions.Internal;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Scaffolding.Metadata;
 using Microsoft.EntityFrameworkCore.Scaffolding.Metadata.Internal;
-using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Utilities;
-using ScaffoldingAnnotationNames = Microsoft.EntityFrameworkCore.Scaffolding.Metadata.Internal.ScaffoldingAnnotationNames;
 
 namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///     any release. You should only use it directly in your code with extreme caution and knowing that
+    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
     public class RelationalScaffoldingModelFactory : IScaffoldingModelFactory
     {
         internal const string NavigationNameUniquifyingPattern = "{0}Navigation";
         internal const string SelfReferencingPrincipalEndNavigationNamePattern = "Inverse{0}";
 
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        protected virtual IOperationReporter Reporter { get; }
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        protected virtual IRelationalTypeMapper TypeMapper { get; }
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        protected virtual ICandidateNamingService CandidateNamingService { get; }
-
+        private readonly IOperationReporter _reporter;
+        private readonly ICandidateNamingService _candidateNamingService;
         private Dictionary<DatabaseTable, CSharpUniqueNamer<DatabaseColumn>> _columnNamers;
+        private bool _useDatabaseNames;
         private readonly DatabaseTable _nullTable = new DatabaseTable();
         private CSharpUniqueNamer<DatabaseTable> _tableNamer;
         private CSharpUniqueNamer<DatabaseTable> _dbSetNamer;
-        private readonly IDatabaseModelFactory _databaseModelFactory;
         private readonly HashSet<DatabaseColumn> _unmappedColumns = new HashSet<DatabaseColumn>();
         private readonly IPluralizer _pluralizer;
         private readonly ICSharpUtilities _cSharpUtilities;
         private readonly IScaffoldingTypeMapper _scaffoldingTypeMapper;
+        private readonly LoggingDefinitions _loggingDefinitions;
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public RelationalScaffoldingModelFactory(
             [NotNull] IOperationReporter reporter,
-            [NotNull] IRelationalTypeMapper typeMapper,
-            [NotNull] IDatabaseModelFactory databaseModelFactory,
             [NotNull] ICandidateNamingService candidateNamingService,
             [NotNull] IPluralizer pluralizer,
             [NotNull] ICSharpUtilities cSharpUtilities,
-            [NotNull] IScaffoldingTypeMapper scaffoldingTypeMapper)
+            [NotNull] IScaffoldingTypeMapper scaffoldingTypeMapper,
+            [NotNull] LoggingDefinitions loggingDefinitions)
         {
             Check.NotNull(reporter, nameof(reporter));
-            Check.NotNull(typeMapper, nameof(typeMapper));
-            Check.NotNull(databaseModelFactory, nameof(databaseModelFactory));
             Check.NotNull(candidateNamingService, nameof(candidateNamingService));
             Check.NotNull(pluralizer, nameof(pluralizer));
             Check.NotNull(cSharpUtilities, nameof(cSharpUtilities));
             Check.NotNull(scaffoldingTypeMapper, nameof(scaffoldingTypeMapper));
+            Check.NotNull(loggingDefinitions, nameof(loggingDefinitions));
 
-            Reporter = reporter;
-            TypeMapper = typeMapper;
-            CandidateNamingService = candidateNamingService;
-            _databaseModelFactory = databaseModelFactory;
+            _reporter = reporter;
+            _candidateNamingService = candidateNamingService;
             _pluralizer = pluralizer;
             _cSharpUtilities = cSharpUtilities;
             _scaffoldingTypeMapper = scaffoldingTypeMapper;
+            _loggingDefinitions = loggingDefinitions;
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public virtual IModel Create(
-            string connectionString,
-            IEnumerable<string> tables,
-            IEnumerable<string> schemas,
-            bool useDatabaseNames)
-        {
-            Check.NotEmpty(connectionString, nameof(connectionString));
-            Check.NotNull(tables, nameof(tables));
-            Check.NotNull(schemas, nameof(schemas));
-
-            var databaseModel = _databaseModelFactory.Create(connectionString, tables, schemas);
-
-            return CreateFromDatabaseModel(databaseModel, useDatabaseNames);
-        }
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        protected virtual IModel CreateFromDatabaseModel([NotNull] DatabaseModel databaseModel, bool useDatabaseNames)
+        public virtual IModel Create(DatabaseModel databaseModel, bool useDatabaseNames)
         {
             Check.NotNull(databaseModel, nameof(databaseModel));
 
@@ -122,7 +89,7 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             _tableNamer = new CSharpUniqueNamer<DatabaseTable>(
                 useDatabaseNames
                     ? (Func<DatabaseTable, string>)(t => t.Name)
-                    : t => CandidateNamingService.GenerateCandidateIdentifier(t.Name),
+                    : t => _candidateNamingService.GenerateCandidateIdentifier(t),
                 _cSharpUtilities,
                 useDatabaseNames
                     ? (Func<string, string>)null
@@ -130,12 +97,13 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             _dbSetNamer = new CSharpUniqueNamer<DatabaseTable>(
                 useDatabaseNames
                     ? (Func<DatabaseTable, string>)(t => t.Name)
-                    : t => CandidateNamingService.GenerateCandidateIdentifier(t.Name),
+                    : t => _candidateNamingService.GenerateCandidateIdentifier(t),
                 _cSharpUtilities,
                 useDatabaseNames
                     ? (Func<string, string>)null
                     : _pluralizer.Pluralize);
             _columnNamers = new Dictionary<DatabaseTable, CSharpUniqueNamer<DatabaseColumn>>();
+            _useDatabaseNames = useDatabaseNames;
 
             VisitDatabaseModel(modelBuilder, databaseModel);
 
@@ -143,22 +111,28 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual string GetEntityTypeName([NotNull] DatabaseTable table)
             => _tableNamer.GetName(Check.NotNull(table, nameof(table)));
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual string GetDbSetName([NotNull] DatabaseTable table)
             => _dbSetNamer.GetName(Check.NotNull(table, nameof(table)));
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual string GetPropertyName([NotNull] DatabaseColumn column)
         {
@@ -166,7 +140,6 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
 
             var table = column.Table ?? _nullTable;
             var usedNames = new List<string>();
-            // TODO - need to clean up the way CSharpNamer & CSharpUniqueNamer work (see issue #1671)
             if (column.Table != null)
             {
                 usedNames.Add(GetEntityTypeName(table));
@@ -174,21 +147,36 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
 
             if (!_columnNamers.ContainsKey(table))
             {
-                _columnNamers.Add(
-                    table,
-                    new CSharpUniqueNamer<DatabaseColumn>(
-                        c => CandidateNamingService.GenerateCandidateIdentifier(c.Name),
-                        usedNames,
-                        _cSharpUtilities,
-                        singularizePluralizer: null));
+                if (_useDatabaseNames)
+                {
+                    _columnNamers.Add(
+                        table,
+                        new CSharpUniqueNamer<DatabaseColumn>(
+                            c => c.Name,
+                            usedNames,
+                            _cSharpUtilities,
+                            singularizePluralizer: null));
+                }
+                else
+                {
+                    _columnNamers.Add(
+                        table,
+                        new CSharpUniqueNamer<DatabaseColumn>(
+                            c => _candidateNamingService.GenerateCandidateIdentifier(c),
+                            usedNames,
+                            _cSharpUtilities,
+                            singularizePluralizer: null));
+                }
             }
 
             return _columnNamers[table].GetName(column);
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual ModelBuilder VisitDatabaseModel([NotNull] ModelBuilder modelBuilder, [NotNull] DatabaseModel databaseModel)
         {
@@ -202,7 +190,7 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
 
             if (!string.IsNullOrEmpty(databaseModel.DatabaseName))
             {
-                modelBuilder.Model.Scaffolding().DatabaseName = databaseModel.DatabaseName;
+                modelBuilder.Model.SetDatabaseName(databaseModel.DatabaseName);
             }
 
             VisitSequences(modelBuilder, databaseModel.Sequences);
@@ -215,10 +203,13 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        protected virtual ModelBuilder VisitSequences([NotNull] ModelBuilder modelBuilder, [NotNull] ICollection<DatabaseSequence> sequences)
+        protected virtual ModelBuilder VisitSequences(
+            [NotNull] ModelBuilder modelBuilder, [NotNull] ICollection<DatabaseSequence> sequences)
         {
             Check.NotNull(modelBuilder, nameof(modelBuilder));
             Check.NotNull(sequences, nameof(sequences));
@@ -232,8 +223,10 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual SequenceBuilder VisitSequence([NotNull] ModelBuilder modelBuilder, [NotNull] DatabaseSequence sequence)
         {
@@ -242,20 +235,24 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
 
             if (string.IsNullOrEmpty(sequence.Name))
             {
-                Reporter.WriteWarning(DesignStrings.SequencesRequireName);
+                _reporter.WriteWarning(DesignStrings.SequencesRequireName);
                 return null;
             }
 
             Type sequenceType = null;
             if (sequence.StoreType != null)
             {
-                sequenceType = TypeMapper.FindMapping(sequence.StoreType)?.ClrType;
+                sequenceType = _scaffoldingTypeMapper.FindMapping(
+                        sequence.StoreType,
+                        keyOrIndex: false,
+                        rowVersion: false)
+                    ?.ClrType;
             }
 
             if (sequenceType != null
                 && !Sequence.SupportedTypes.Contains(sequenceType))
             {
-                Reporter.WriteWarning(DesignStrings.BadSequenceType(sequence.Name, sequence.StoreType));
+                _reporter.WriteWarning(DesignStrings.BadSequenceType(sequence.Name, sequence.StoreType));
                 return null;
             }
 
@@ -292,8 +289,10 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual ModelBuilder VisitTables([NotNull] ModelBuilder modelBuilder, [NotNull] ICollection<DatabaseTable> tables)
         {
@@ -309,8 +308,10 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual EntityTypeBuilder VisitTable([NotNull] ModelBuilder modelBuilder, [NotNull] DatabaseTable table)
         {
@@ -322,23 +323,38 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             var builder = modelBuilder.Entity(entityTypeName);
 
             var dbSetName = GetDbSetName(table);
-            builder.Metadata.Scaffolding().DbSetName = dbSetName;
+            builder.Metadata.SetDbSetName(dbSetName);
 
-            builder.ToTable(table.Name, table.Schema);
+            if (table is DatabaseView)
+            {
+                builder.ToView(table.Name, table.Schema);
+            }
+            else
+            {
+                builder.ToTable(table.Name, table.Schema);
+            }
+
+            if (table.Comment != null)
+            {
+                builder.HasComment(table.Comment);
+            }
 
             VisitColumns(builder, table.Columns);
 
-            var keyBuilder = VisitPrimaryKey(builder, table);
-
-            if (keyBuilder == null)
+            if (table.PrimaryKey != null)
             {
-                var errorMessage = DesignStrings.UnableToGenerateEntityType(table.DisplayName());
-                Reporter.WriteWarning(errorMessage);
+                var keyBuilder = VisitPrimaryKey(builder, table);
 
-                var model = modelBuilder.Model;
-                model.RemoveEntityType(entityTypeName);
-                model.Scaffolding().EntityTypeErrors.Add(entityTypeName, errorMessage);
-                return null;
+                if (keyBuilder == null)
+                {
+                    var errorMessage = DesignStrings.UnableToGenerateEntityType(table.DisplayName());
+                    _reporter.WriteWarning(errorMessage);
+
+                    var model = modelBuilder.Model;
+                    model.RemoveEntityType(entityTypeName);
+                    model.GetEntityTypeErrors().Add(entityTypeName, errorMessage);
+                    return null;
+                }
             }
 
             VisitUniqueConstraints(builder, table.UniqueConstraints);
@@ -350,8 +366,10 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual EntityTypeBuilder VisitColumns([NotNull] EntityTypeBuilder builder, [NotNull] ICollection<DatabaseColumn> columns)
         {
@@ -367,8 +385,10 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual PropertyBuilder VisitColumn([NotNull] EntityTypeBuilder builder, [NotNull] DatabaseColumn column)
         {
@@ -380,20 +400,23 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             if (typeScaffoldingInfo == null)
             {
                 _unmappedColumns.Add(column);
-                Reporter.WriteWarning(
+                _reporter.WriteWarning(
                     DesignStrings.CannotFindTypeMappingForColumn(column.DisplayName(), column.StoreType));
                 return null;
             }
 
             var clrType = typeScaffoldingInfo.ClrType;
-            var forceNullable = typeof(bool) == clrType && column.DefaultValueSql != null;
-            if (forceNullable)
+            if (column.IsNullable)
             {
-                Reporter.WriteWarning(
-                    DesignStrings.NonNullableBoooleanColumnHasDefaultConstraint(column.DisplayName()));
+                clrType = clrType.MakeNullable();
             }
-            if (column.IsNullable || forceNullable)
+
+            if (clrType == typeof(bool)
+                && column.DefaultValueSql != null)
             {
+                _reporter.WriteWarning(
+                    DesignStrings.NonNullableBoooleanColumnHasDefaultConstraint(column.DisplayName()));
+
                 clrType = clrType.MakeNullable();
             }
 
@@ -410,6 +433,11 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             if (typeScaffoldingInfo.ScaffoldUnicode.HasValue)
             {
                 property.IsUnicode(typeScaffoldingInfo.ScaffoldUnicode.Value);
+            }
+
+            if (typeScaffoldingInfo.ScaffoldFixedLength == true)
+            {
+                property.IsFixedLength();
             }
 
             if (typeScaffoldingInfo.ScaffoldMaxLength.HasValue)
@@ -442,9 +470,14 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
                 property.HasComputedColumnSql(column.ComputedColumnSql);
             }
 
+            if (column.Comment != null)
+            {
+                property.HasComment(column.Comment);
+            }
+
             if (!(column.Table.PrimaryKey?.Columns.Contains(column) ?? false))
             {
-                property.IsRequired(!column.IsNullable && !forceNullable);
+                property.IsRequired(!column.IsNullable);
             }
 
             if ((bool?)column[ScaffoldingAnnotationNames.ConcurrencyToken] == true)
@@ -452,19 +485,20 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
                 property.IsConcurrencyToken();
             }
 
-            property.Metadata.Scaffolding().ColumnOrdinal = column.Table.Columns.IndexOf(column);
+            property.Metadata.SetColumnOrdinal(column.Table.Columns.IndexOf(column));
 
             property.Metadata.AddAnnotations(
                 column.GetAnnotations().Where(
-                    a => a.Name != ScaffoldingAnnotationNames.UnderlyingStoreType
-                         && a.Name != ScaffoldingAnnotationNames.ConcurrencyToken));
+                    a => a.Name != ScaffoldingAnnotationNames.ConcurrencyToken));
 
             return property;
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual KeyBuilder VisitPrimaryKey([NotNull] EntityTypeBuilder builder, [NotNull] DatabaseTable table)
         {
@@ -472,19 +506,14 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             Check.NotNull(table, nameof(table));
 
             var primaryKey = table.PrimaryKey;
-            if (primaryKey == null)
-            {
-                Reporter.WriteWarning(DesignStrings.MissingPrimaryKey(table.DisplayName()));
-                return null;
-            }
 
             var unmappedColumns = primaryKey.Columns
                 .Where(c => _unmappedColumns.Contains(c))
                 .Select(c => c.Name)
                 .ToList();
-            if (unmappedColumns.Any())
+            if (unmappedColumns.Count > 0)
             {
-                Reporter.WriteWarning(
+                _reporter.WriteWarning(
                     DesignStrings.PrimaryKeyErrorPropertyNotFound(
                         table.DisplayName(),
                         string.Join(CultureInfo.CurrentCulture.TextInfo.ListSeparator, unmappedColumns)));
@@ -500,12 +529,18 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
                 var property = builder.Metadata.FindProperty(GetPropertyName(primaryKey.Columns[0]))?.AsProperty();
                 if (property != null)
                 {
-                    var conventionalValueGenerated = new RelationalValueGeneratorConvention().GetValueGenerated(property);
+                    var conventionalValueGenerated = RelationalValueGenerationConvention.GetValueGenerated(property);
                     if (conventionalValueGenerated == ValueGenerated.OnAdd)
                     {
                         property.ValueGenerated = ValueGenerated.Never;
                     }
                 }
+            }
+
+            if (!string.IsNullOrEmpty(primaryKey.Name)
+                && primaryKey.Name != keyBuilder.Metadata.GetDefaultName())
+            {
+                keyBuilder.HasName(primaryKey.Name);
             }
 
             keyBuilder.Metadata.AddAnnotations(primaryKey.GetAnnotations());
@@ -514,10 +549,13 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        protected virtual EntityTypeBuilder VisitUniqueConstraints([NotNull] EntityTypeBuilder builder, [NotNull] ICollection<DatabaseUniqueConstraint> uniqueConstraints)
+        protected virtual EntityTypeBuilder VisitUniqueConstraints(
+            [NotNull] EntityTypeBuilder builder, [NotNull] ICollection<DatabaseUniqueConstraint> uniqueConstraints)
         {
             Check.NotNull(builder, nameof(builder));
             Check.NotNull(uniqueConstraints, nameof(uniqueConstraints));
@@ -531,10 +569,13 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        protected virtual IndexBuilder VisitUniqueConstraint([NotNull] EntityTypeBuilder builder, [NotNull] DatabaseUniqueConstraint uniqueConstraint)
+        protected virtual IndexBuilder VisitUniqueConstraint(
+            [NotNull] EntityTypeBuilder builder, [NotNull] DatabaseUniqueConstraint uniqueConstraint)
         {
             Check.NotNull(builder, nameof(builder));
             Check.NotNull(uniqueConstraint, nameof(uniqueConstraint));
@@ -543,9 +584,9 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
                 .Where(c => _unmappedColumns.Contains(c))
                 .Select(c => c.Name)
                 .ToList();
-            if (unmappedColumns.Any())
+            if (unmappedColumns.Count > 0)
             {
-                Reporter.WriteWarning(
+                _reporter.WriteWarning(
                     DesignStrings.UnableToScaffoldIndexMissingProperty(
                         uniqueConstraint.Name,
                         string.Join(CultureInfo.CurrentCulture.TextInfo.ListSeparator, unmappedColumns)));
@@ -555,7 +596,8 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             var propertyNames = uniqueConstraint.Columns.Select(GetPropertyName).ToArray();
             var indexBuilder = builder.HasIndex(propertyNames).IsUnique();
 
-            if (!string.IsNullOrEmpty(uniqueConstraint.Name))
+            if (!string.IsNullOrEmpty(uniqueConstraint.Name)
+                && uniqueConstraint.Name != indexBuilder.Metadata.GetDefaultName())
             {
                 indexBuilder.HasName(uniqueConstraint.Name);
             }
@@ -566,8 +608,10 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual EntityTypeBuilder VisitIndexes([NotNull] EntityTypeBuilder builder, [NotNull] ICollection<DatabaseIndex> indexes)
         {
@@ -583,8 +627,10 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual IndexBuilder VisitIndex([NotNull] EntityTypeBuilder builder, [NotNull] DatabaseIndex index)
         {
@@ -595,9 +641,9 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
                 .Where(c => _unmappedColumns.Contains(c))
                 .Select(c => c.Name)
                 .ToList();
-            if (unmappedColumns.Any())
+            if (unmappedColumns.Count > 0)
             {
-                Reporter.WriteWarning(
+                _reporter.WriteWarning(
                     DesignStrings.UnableToScaffoldIndexMissingProperty(
                         index.Name,
                         string.Join(CultureInfo.CurrentCulture.TextInfo.ListSeparator, unmappedColumns)));
@@ -614,7 +660,7 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             }
 
             if (!string.IsNullOrEmpty(index.Name)
-                && index.Name != ConstraintNamer.GetDefaultName(indexBuilder.Metadata))
+                && index.Name != indexBuilder.Metadata.GetDefaultName())
             {
                 indexBuilder.HasName(index.Name);
             }
@@ -625,10 +671,13 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        protected virtual ModelBuilder VisitForeignKeys([NotNull] ModelBuilder modelBuilder, [NotNull] IList<DatabaseForeignKey> foreignKeys)
+        protected virtual ModelBuilder VisitForeignKeys(
+            [NotNull] ModelBuilder modelBuilder, [NotNull] IList<DatabaseForeignKey> foreignKeys)
         {
             Check.NotNull(modelBuilder, nameof(modelBuilder));
             Check.NotNull(foreignKeys, nameof(foreignKeys));
@@ -650,8 +699,10 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual IMutableForeignKey VisitForeignKey([NotNull] ModelBuilder modelBuilder, [NotNull] DatabaseForeignKey foreignKey)
         {
@@ -660,7 +711,7 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
 
             if (foreignKey.PrincipalTable == null)
             {
-                Reporter.WriteWarning(
+                _reporter.WriteWarning(
                     DesignStrings.ForeignKeyScaffoldErrorPrincipalTableNotFound(foreignKey.DisplayName()));
                 return null;
             }
@@ -681,9 +732,9 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
                 .Where(c => _unmappedColumns.Contains(c))
                 .Select(c => c.Name)
                 .ToList();
-            if (unmappedDependentColumns.Any())
+            if (unmappedDependentColumns.Count > 0)
             {
-                Reporter.WriteWarning(
+                _reporter.WriteWarning(
                     DesignStrings.ForeignKeyScaffoldErrorPropertyNotFound(
                         foreignKey.DisplayName(),
                         string.Join(CultureInfo.CurrentCulture.TextInfo.ListSeparator, unmappedDependentColumns)));
@@ -699,7 +750,7 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             var principalEntityType = modelBuilder.Model.FindEntityType(GetEntityTypeName(foreignKey.PrincipalTable));
             if (principalEntityType == null)
             {
-                Reporter.WriteWarning(
+                _reporter.WriteWarning(
                     DesignStrings.ForeignKeyScaffoldErrorPrincipalTableScaffoldingError(
                         foreignKey.DisplayName(),
                         foreignKey.PrincipalTable.DisplayName()));
@@ -710,9 +761,9 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
                 .Where(pc => principalEntityType.FindProperty(GetPropertyName(pc)) == null)
                 .Select(pc => pc.Name)
                 .ToList();
-            if (unmappedPrincipalColumns.Any())
+            if (unmappedPrincipalColumns.Count > 0)
             {
-                Reporter.WriteWarning(
+                _reporter.WriteWarning(
                     DesignStrings.ForeignKeyScaffoldErrorPropertyNotFound(
                         foreignKey.DisplayName(),
                         string.Join(CultureInfo.CurrentCulture.TextInfo.ListSeparator, unmappedPrincipalColumns)));
@@ -730,19 +781,18 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             if (principalKey == null)
             {
                 var index = principalEntityType.FindIndex(principalProperties.AsReadOnly());
-                if (index != null
-                    && index.IsUnique)
+                if (index?.IsUnique == true)
                 {
                     // ensure all principal properties are non-nullable even if the columns
                     // are nullable on the database. EF's concept of a key requires this.
                     var nullablePrincipalProperties =
                         principalPropertiesMap.Where(tuple => tuple.property.IsNullable).ToList();
-                    if (nullablePrincipalProperties.Any())
+                    if (nullablePrincipalProperties.Count > 0)
                     {
-                        Reporter.WriteWarning(
+                        _reporter.WriteWarning(
                             DesignStrings.ForeignKeyPrincipalEndContainsNullableColumns(
                                 foreignKey.DisplayName(),
-                                index.Relational().Name,
+                                index.GetName(),
                                 nullablePrincipalProperties.Select(tuple => tuple.column.DisplayName()).ToList()
                                     .Aggregate((a, b) => a + "," + b)));
 
@@ -750,13 +800,14 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
                             .ToList()
                             .ForEach(tuple => tuple.property.IsNullable = false);
                     }
+
                     principalKey = principalEntityType.AddKey(principalProperties);
                 }
                 else
                 {
                     var principalColumns = foreignKey.PrincipalColumns.Select(c => c.Name).ToList();
 
-                    Reporter.WriteWarning(
+                    _reporter.WriteWarning(
                         DesignStrings.ForeignKeyScaffoldErrorPrincipalKeyNotFound(
                             foreignKey.DisplayName(),
                             string.Join(CultureInfo.CurrentCulture.TextInfo.ListSeparator, principalColumns),
@@ -766,30 +817,32 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
                 }
             }
 
-            var key = dependentEntityType.GetOrAddForeignKey(
+            var newForeignKey = dependentEntityType.AddForeignKey(
                 dependentProperties, principalKey, principalEntityType);
 
             var dependentKey = dependentEntityType.FindKey(dependentProperties);
             var dependentIndex = dependentEntityType.FindIndex(dependentProperties);
-            key.IsUnique = dependentKey != null
-                           || dependentIndex != null && dependentIndex.IsUnique;
+            newForeignKey.IsUnique = dependentKey != null
+                                     || dependentIndex?.IsUnique == true;
 
             if (!string.IsNullOrEmpty(foreignKey.Name)
-                && foreignKey.Name != ConstraintNamer.GetDefaultName(key))
+                && foreignKey.Name != newForeignKey.GetDefaultName())
             {
-                key.Relational().Name = foreignKey.Name;
+                newForeignKey.SetConstraintName(foreignKey.Name);
             }
 
-            AssignOnDeleteAction(foreignKey, key);
+            AssignOnDeleteAction(foreignKey, newForeignKey);
 
-            key.AddAnnotations(foreignKey.GetAnnotations());
+            newForeignKey.AddAnnotations(foreignKey.GetAnnotations());
 
-            return key;
+            return newForeignKey;
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual void AddNavigationProperties([NotNull] IMutableForeignKey foreignKey)
         {
@@ -797,7 +850,7 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
 
             var dependentEndExistingIdentifiers = ExistingIdentifiers(foreignKey.DeclaringEntityType);
             var dependentEndNavigationPropertyCandidateName =
-                CandidateNamingService.GetDependentEndCandidateNavigationPropertyName(foreignKey);
+                _candidateNamingService.GetDependentEndCandidateNavigationPropertyName(foreignKey);
             var dependentEndNavigationPropertyName =
                 _cSharpUtilities.GenerateCSharpIdentifier(
                     dependentEndNavigationPropertyCandidateName,
@@ -813,7 +866,7 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
                     CultureInfo.CurrentCulture,
                     SelfReferencingPrincipalEndNavigationNamePattern,
                     dependentEndNavigationPropertyName)
-                : CandidateNamingService.GetPrincipalEndCandidateNavigationPropertyName(
+                : _candidateNamingService.GetPrincipalEndCandidateNavigationPropertyName(
                     foreignKey, dependentEndNavigationPropertyName);
 
             if (!foreignKey.IsUnique
@@ -833,21 +886,22 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         // Stores the names of the EntityType itself and its Properties, but does not include any Navigation Properties
-        private readonly Dictionary<IEntityType, List<string>> _entityTypeAndPropertyIdentifiers = new Dictionary<IEntityType, List<string>>();
+        private readonly Dictionary<IEntityType, List<string>> _entityTypeAndPropertyIdentifiers =
+            new Dictionary<IEntityType, List<string>>();
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual List<string> ExistingIdentifiers([NotNull] IEntityType entityType)
         {
             Check.NotNull(entityType, nameof(entityType));
 
-            List<string> existingIdentifiers;
-            if (!_entityTypeAndPropertyIdentifiers.TryGetValue(entityType, out existingIdentifiers))
+            if (!_entityTypeAndPropertyIdentifiers.TryGetValue(entityType, out var existingIdentifiers))
             {
-                existingIdentifiers = new List<string>();
-                existingIdentifiers.Add(entityType.Name);
+                existingIdentifiers = new List<string> { entityType.Name };
                 existingIdentifiers.AddRange(entityType.GetProperties().Select(p => p.Name));
                 _entityTypeAndPropertyIdentifiers[entityType] = existingIdentifiers;
             }
@@ -857,8 +911,10 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected virtual TypeScaffoldingInfo GetTypeScaffoldingInfo([NotNull] DatabaseColumn column)
         {
@@ -867,21 +923,10 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
                 return null;
             }
 
-            var typeScaffoldingInfo = _scaffoldingTypeMapper.FindMapping(
-                column.GetUnderlyingStoreType() ?? column.StoreType,
+            return _scaffoldingTypeMapper.FindMapping(
+                column.StoreType,
                 column.IsKeyOrIndex(),
                 column.IsRowVersion());
-
-            if (column.GetUnderlyingStoreType() != null)
-            {
-                return new TypeScaffoldingInfo(
-                    typeScaffoldingInfo.ClrType,
-                    inferred: false,
-                    scaffoldUnicode: typeScaffoldingInfo.ScaffoldUnicode,
-                    scaffoldMaxLength: typeScaffoldingInfo.ScaffoldMaxLength);
-            }
-
-            return typeScaffoldingInfo;
         }
 
         private static void AssignOnDeleteAction(
@@ -907,10 +952,9 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         // TODO use CSharpUniqueNamer
-        private string NavigationUniquifier([NotNull] string proposedIdentifier, [CanBeNull] ICollection<string> existingIdentifiers)
+        private static string NavigationUniquifier([NotNull] string proposedIdentifier, [CanBeNull] ICollection<string> existingIdentifiers)
         {
-            if (existingIdentifiers == null
-                || !existingIdentifiers.Contains(proposedIdentifier))
+            if (existingIdentifiers?.Contains(proposedIdentifier) != true)
             {
                 return proposedIdentifier;
             }

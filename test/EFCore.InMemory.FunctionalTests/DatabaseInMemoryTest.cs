@@ -8,16 +8,26 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Xunit;
 
+// ReSharper disable InconsistentNaming
 namespace Microsoft.EntityFrameworkCore
 {
     public class DatabaseInMemoryTest
     {
-        [Fact]
+        [ConditionalTheory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task CanConnect_returns_true(bool async)
+        {
+            using var context = new SimpleContext();
+            Assert.True(async ? await context.Database.CanConnectAsync() : context.Database.CanConnect());
+        }
+
+        [ConditionalFact]
         public async Task Can_add_update_delete_end_to_end()
         {
             var serviceProvider = new ServiceCollection()
                 .AddEntityFrameworkInMemoryDatabase()
-                .AddSingleton<ILoggerFactory>(new TestLoggerFactory())
+                .AddSingleton<ILoggerFactory>(new ListLoggerFactory())
                 .AddSingleton(TestModelSource.GetFactory(OnModelCreating))
                 .BuildServiceProvider();
 
@@ -74,15 +84,6 @@ namespace Microsoft.EntityFrameworkCore
             }
         }
 
-        [Fact]
-        public void Any_returns_false_for_empty_sets()
-        {
-            using (var db = new SimpleContext())
-            {
-                db.Artists.Any();
-            }
-        }
-
         private class Customer
         {
             // ReSharper disable once UnusedMember.Local
@@ -105,19 +106,20 @@ namespace Microsoft.EntityFrameworkCore
             modelBuilder.Entity<Customer>();
         }
 
-        [Fact]
+        [ConditionalFact]
         public async Task Can_share_instance_between_contexts_with_sugar_experience()
         {
             using (var db = new SimpleContext())
             {
-                db.Artists.Add(new SimpleContext.Artist { ArtistId = "JDId", Name = "John Doe" });
+                db.Artists.Add(
+                    new SimpleContext.Artist { ArtistId = "JDId", Name = "John Doe" });
                 await db.SaveChangesAsync();
             }
 
             using (var db = new SimpleContext())
             {
                 var data = db.Artists.ToList();
-                Assert.Equal(1, data.Count);
+                Assert.Single(data);
                 Assert.Equal("JDId", data[0].ArtistId);
                 Assert.Equal("John Doe", data[0].Name);
             }
@@ -125,10 +127,13 @@ namespace Microsoft.EntityFrameworkCore
 
         private class SimpleContext : DbContext
         {
+            // ReSharper disable once UnusedAutoPropertyAccessor.Local
             public DbSet<Artist> Artists { get; set; }
 
             protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-                => optionsBuilder.UseInMemoryDatabase(nameof(SimpleContext));
+                => optionsBuilder
+                    .UseInternalServiceProvider(InMemoryFixture.DefaultServiceProvider)
+                    .UseInMemoryDatabase(nameof(SimpleContext));
 
             protected override void OnModelCreating(ModelBuilder modelBuilder)
                 => modelBuilder.Entity<Artist>().HasKey(a => a.ArtistId);

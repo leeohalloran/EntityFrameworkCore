@@ -3,22 +3,41 @@
 
 using System.Data;
 using System.Data.Common;
-using System.Data.SqlClient;
 using JetBrains.Annotations;
+using Microsoft.Data.SqlClient; // Note: Hard reference to SqlClient here.
+using Microsoft.EntityFrameworkCore.Storage;
 
-namespace Microsoft.EntityFrameworkCore.Storage.Internal
+namespace Microsoft.EntityFrameworkCore.SqlServer.Storage.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///     any release. You should only use it directly in your code with extreme caution and knowing that
+    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
     public class SqlServerDateTimeTypeMapping : DateTimeTypeMapping
     {
-        private const string DateTimeFormatConst = "{0:yyyy-MM-ddTHH:mm:ss.fffK}";
+        private const string DateFormatConst = "'{0:yyyy-MM-dd}'";
+        private const string SmallDateTimeFormatConst = "'{0:yyyy-MM-ddTHH:mm:ss}'";
+        private const string DateTimeFormatConst = "'{0:yyyy-MM-ddTHH:mm:ss.fff}'";
+
+        private readonly string[] _dateTime2Formats =
+        {
+            "'{0:yyyy-MM-ddTHH:mm:ss}'",
+            "'{0:yyyy-MM-ddTHH:mm:ss.fK}'",
+            "'{0:yyyy-MM-ddTHH:mm:ss.ffK}'",
+            "'{0:yyyy-MM-ddTHH:mm:ss.fffK}'",
+            "'{0:yyyy-MM-ddTHH:mm:ss.ffffK}'",
+            "'{0:yyyy-MM-ddTHH:mm:ss.fffffK}'",
+            "'{0:yyyy-MM-ddTHH:mm:ss.ffffffK}'",
+            "'{0:yyyy-MM-ddTHH:mm:ss.fffffffK}'"
+        };
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public SqlServerDateTimeTypeMapping(
             [NotNull] string storeType,
@@ -28,8 +47,21 @@ namespace Microsoft.EntityFrameworkCore.Storage.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        protected SqlServerDateTimeTypeMapping(RelationalTypeMappingParameters parameters)
+            : base(parameters)
+        {
+        }
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected override void ConfigureParameter(DbParameter parameter)
         {
@@ -40,19 +72,54 @@ namespace Microsoft.EntityFrameworkCore.Storage.Internal
             {
                 ((SqlParameter)parameter).SqlDbType = SqlDbType.Date;
             }
+
+            if (Size.HasValue
+                && Size.Value != -1)
+            {
+                parameter.Size = Size.Value;
+            }
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     Creates a copy of this mapping.
         /// </summary>
-        public override RelationalTypeMapping Clone(string storeType, int? size)
-            => new SqlServerDateTimeTypeMapping(storeType, DbType);
+        /// <param name="parameters"> The parameters for this mapping. </param>
+        /// <returns> The newly created mapping. </returns>
+        protected override RelationalTypeMapping Clone(RelationalTypeMappingParameters parameters)
+            => new SqlServerDateTimeTypeMapping(parameters);
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        protected override string SqlLiteralFormatString => "'" + DateTimeFormatConst + "'";
+        protected override string SqlLiteralFormatString
+        {
+            get
+            {
+                switch (StoreType)
+                {
+                    case "date":
+                        return DateFormatConst;
+                    case "datetime":
+                        return DateTimeFormatConst;
+                    case "smalldatetime":
+                        return SmallDateTimeFormatConst;
+                    default:
+                        if (Size.HasValue)
+                        {
+                            var size = Size.Value;
+                            if (size <= 7
+                                && size >= 0)
+                            {
+                                return _dateTime2Formats[size];
+                            }
+                        }
+
+                        return _dateTime2Formats[7];
+                }
+            }
+        }
     }
 }

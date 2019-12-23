@@ -3,18 +3,23 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Diagnostics.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.EntityFrameworkCore.TestUtilities;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
+// ReSharper disable MemberHidesStaticFromOuterClass
+// ReSharper disable InconsistentNaming
 namespace Microsoft.EntityFrameworkCore.ModelBuilding
 {
     public abstract partial class ModelBuilderTest
     {
         public abstract class InheritanceTestBase : ModelBuilderTestBase
         {
-            [Fact]
+            [ConditionalFact]
             public virtual void Can_map_derived_types_first()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -39,15 +44,14 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
 
                 modelBuilder.Entity<SpecialBookLabel>().Property(b => b.BookId);
 
-                modelBuilder.Validate();
+                var model = modelBuilder.FinalizeModel();
 
-                var model = modelBuilder.Model;
-                Assert.Equal(0, model.FindEntityType(typeof(ExtraSpecialBookLabel)).GetDeclaredProperties().Count());
-                Assert.Equal(0, model.FindEntityType(typeof(SpecialBookLabel)).GetDeclaredProperties().Count());
+                Assert.Empty(model.FindEntityType(typeof(ExtraSpecialBookLabel)).GetDeclaredProperties());
+                Assert.Empty(model.FindEntityType(typeof(SpecialBookLabel)).GetDeclaredProperties());
                 Assert.NotNull(model.FindEntityType(typeof(SpecialBookLabel)).FindProperty(nameof(BookLabel.BookId)));
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Base_types_are_mapped_correctly_if_discovered_last()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -57,9 +61,8 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 modelBuilder.Entity<ExtraSpecialBookLabel>();
                 modelBuilder.Entity<SpecialBookLabel>().Ignore(b => b.BookLabel);
 
-                modelBuilder.Validate();
+                var model = modelBuilder.FinalizeModel();
 
-                var model = modelBuilder.Model;
                 var moreDerived = model.FindEntityType(typeof(ExtraSpecialBookLabel));
                 var derived = model.FindEntityType(typeof(SpecialBookLabel));
                 var baseType = model.FindEntityType(typeof(BookLabel));
@@ -68,7 +71,46 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Same(derived, moreDerived.BaseType);
             }
 
-            [Fact]
+            [ConditionalFact]
+            public virtual void Can_specify_discriminator_values_first()
+            {
+                var modelBuilder = CreateModelBuilder();
+
+                modelBuilder.Ignore<P>();
+
+                modelBuilder.Entity<PBase>()
+                    .HasDiscriminator<int>("TypeDiscriminator")
+                    .HasValue<T>(1)
+                    .HasValue<Q>(2);
+
+                modelBuilder.Entity<P>();
+
+                var model = modelBuilder.FinalizeModel();
+
+                Assert.Null(model.FindEntityType(typeof(PBase)).GetDiscriminatorValue());
+                Assert.Null(model.FindEntityType(typeof(P)).GetDiscriminatorValue());
+                Assert.Equal(1, model.FindEntityType(typeof(T)).GetDiscriminatorValue());
+                Assert.Equal(2, model.FindEntityType(typeof(Q)).GetDiscriminatorValue());
+            }
+
+            [ConditionalFact]
+            public virtual void Can_map_derived_self_ref_many_to_one()
+            {
+                var modelBuilder = CreateModelBuilder();
+
+                modelBuilder.Entity<SelfRefManyToOneDerived>().HasData(
+                    new SelfRefManyToOneDerived { Id = 1, SelfRefId = 1 });
+                modelBuilder.Entity<SelfRefManyToOne>();
+
+                modelBuilder.FinalizeModel();
+
+                var model = modelBuilder.Model;
+                Assert.Empty(model.FindEntityType(typeof(SelfRefManyToOneDerived)).GetDeclaredProperties());
+                Assert.NotNull(model.FindEntityType(typeof(SelfRefManyToOne)).FindNavigation(nameof(SelfRefManyToOne.SelfRef1)));
+                Assert.NotNull(model.FindEntityType(typeof(SelfRefManyToOne)).FindNavigation(nameof(SelfRefManyToOne.SelfRef2)));
+            }
+
+            [ConditionalFact]
             public virtual void Can_set_and_remove_base_type()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -91,7 +133,9 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 var ingredient = ingredientBuilder.Metadata;
 
                 Assert.Same(typeof(Ingredient), pickle.BaseType.ClrType);
-                AssertEqual(initialProperties, pickle.GetProperties().Where(p => p.Name != "Discriminator"), new PropertyComparer(compareAnnotations: false));
+                AssertEqual(
+                    initialProperties, pickle.GetProperties().Where(p => p.Name != "Discriminator"),
+                    new PropertyComparer(compareAnnotations: false));
                 AssertEqual(initialKeys, pickle.GetKeys());
                 AssertEqual(initialIndexes, pickle.GetIndexes());
                 AssertEqual(initialForeignKeys, pickle.GetForeignKeys());
@@ -106,14 +150,16 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 AssertEqual(initialForeignKeys, pickle.GetForeignKeys());
                 AssertEqual(initialReferencingForeignKeys, pickle.GetReferencingForeignKeys());
 
-                AssertEqual(initialProperties, ingredient.GetProperties().Where(p => p.Name != "Discriminator"), new PropertyComparer(compareAnnotations: false));
+                AssertEqual(
+                    initialProperties, ingredient.GetProperties().Where(p => p.Name != "Discriminator"),
+                    new PropertyComparer(compareAnnotations: false));
                 AssertEqual(initialKeys, ingredient.GetKeys());
                 AssertEqual(initialIndexes, ingredient.GetIndexes());
                 Assert.Equal(initialForeignKeys.Count(), ingredient.GetForeignKeys().Count());
                 Assert.Equal(initialReferencingForeignKeys.Count(), ingredient.GetReferencingForeignKeys().Count());
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Setting_base_type_to_null_fixes_relationships()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -127,6 +173,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 var dependentEntityBuilder = modelBuilder.Entity<Order>();
                 var derivedDependentEntityBuilder = modelBuilder.Entity<SpecialOrder>();
                 derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.SpecialCustomer));
+                derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.ShippingAddress));
 
                 Assert.Same(principalEntityBuilder.Metadata, derivedPrincipalEntityBuilder.Metadata.BaseType);
                 Assert.Same(dependentEntityBuilder.Metadata, derivedDependentEntityBuilder.Metadata.BaseType);
@@ -143,6 +190,8 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
 
                 derivedDependentEntityBuilder.HasBaseType(null);
 
+                modelBuilder.FinalizeModel();
+
                 fk = dependentEntityBuilder.Metadata.GetNavigations().Single().ForeignKey;
                 Assert.Equal(nameof(Order.Customer), fk.DependentToPrincipal.Name);
                 Assert.Null(fk.PrincipalToDependent);
@@ -158,7 +207,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Empty(principalEntityBuilder.Metadata.GetNavigations());
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Pulling_relationship_to_a_derived_type_creates_relationships_on_other_derived_types()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -172,6 +221,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 var derivedDependentEntityBuilder = modelBuilder.Entity<SpecialOrder>();
                 derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.BackOrder));
                 derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.SpecialCustomer));
+                derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.ShippingAddress));
                 var otherDerivedDependentEntityBuilder = modelBuilder.Entity<BackOrder>();
                 otherDerivedDependentEntityBuilder.Ignore(nameof(BackOrder.SpecialOrder));
 
@@ -194,6 +244,8 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                     .HasMany(e => e.SpecialOrders)
                     .WithOne(e => (SpecialCustomer)e.Customer);
 
+                modelBuilder.FinalizeModel();
+
                 Assert.Empty(dependentEntityBuilder.Metadata.GetForeignKeys());
                 Assert.Empty(dependentEntityBuilder.Metadata.GetNavigations());
                 var newFk = derivedDependentEntityBuilder.Metadata.GetDeclaredNavigations().Single().ForeignKey;
@@ -206,7 +258,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Equal(nameof(Order.CustomerId), otherDerivedFk.Properties.Single().Name);
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Pulling_relationship_to_a_derived_type_reverted_creates_relationships_on_other_derived_types()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -220,12 +272,15 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 var derivedDependentEntityBuilder = modelBuilder.Entity<SpecialOrder>();
                 derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.BackOrder));
                 derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.SpecialCustomer));
+                derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.ShippingAddress));
                 var otherDerivedDependentEntityBuilder = modelBuilder.Entity<BackOrder>();
                 otherDerivedDependentEntityBuilder.Ignore(nameof(BackOrder.SpecialOrder));
 
                 derivedDependentEntityBuilder
                     .HasOne(e => (SpecialCustomer)e.Customer)
                     .WithMany(e => e.SpecialOrders);
+
+                modelBuilder.FinalizeModel();
 
                 Assert.Empty(dependentEntityBuilder.Metadata.GetForeignKeys());
                 Assert.Empty(dependentEntityBuilder.Metadata.GetNavigations());
@@ -239,7 +294,36 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Equal(nameof(Order.CustomerId), otherDerivedFk.Properties.Single().Name);
             }
 
-            [Fact]
+            [ConditionalFact]
+            public virtual void Can_match_navigation_to_derived_type_with_inverse_on_base()
+            {
+                var modelBuilder = CreateModelBuilder();
+                modelBuilder.Ignore<CustomerDetails>();
+                modelBuilder.Ignore<OrderDetails>();
+
+                var principalEntityBuilder = modelBuilder.Entity<Customer>();
+                principalEntityBuilder.Ignore(nameof(Customer.Orders));
+                var dependentEntityBuilder = modelBuilder.Entity<Order>();
+                var derivedDependentEntityBuilder = modelBuilder.Entity<SpecialOrder>();
+                derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.BackOrder));
+                derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.SpecialCustomer));
+                derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.ShippingAddress));
+
+                derivedDependentEntityBuilder
+                    .HasOne(e => e.Customer)
+                    .WithMany(e => e.SomeOrders);
+
+                modelBuilder.FinalizeModel();
+
+                Assert.Empty(dependentEntityBuilder.Metadata.GetForeignKeys());
+                Assert.Empty(dependentEntityBuilder.Metadata.GetNavigations());
+                var newFk = derivedDependentEntityBuilder.Metadata.GetDeclaredNavigations().Single().ForeignKey;
+                Assert.Equal(nameof(Order.Customer), newFk.DependentToPrincipal.Name);
+                Assert.Equal(nameof(Customer.SomeOrders), newFk.PrincipalToDependent.Name);
+                Assert.Same(principalEntityBuilder.Metadata, newFk.PrincipalEntityType);
+            }
+
+            [ConditionalFact]
             public virtual void Pulling_relationship_to_a_derived_type_many_to_one_creates_relationships_on_other_derived_types()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -252,6 +336,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 dependentEntityBuilder.Ignore(nameof(Order.Customer));
                 var derivedDependentEntityBuilder = modelBuilder.Entity<SpecialOrder>();
                 derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.BackOrder));
+                derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.ShippingAddress));
                 var otherDerivedPrincipalEntityBuilder = modelBuilder.Entity<OtherCustomer>();
 
                 derivedPrincipalEntityBuilder
@@ -268,7 +353,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Equal(nameof(OtherCustomer.Orders), otherDerivedFk.PrincipalToDependent.Name);
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Pulling_relationship_to_a_derived_type_one_to_one_creates_relationship_on_base()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -281,6 +366,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 var derivedDependentEntityBuilder = modelBuilder.Entity<SpecialOrder>();
                 derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.BackOrder));
                 derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.SpecialCustomer));
+                derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.ShippingAddress));
 
                 principalEntityBuilder
                     .HasOne(e => (SpecialOrder)e.Order)
@@ -294,7 +380,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Same(derivedDependentEntityBuilder.Metadata, newFk.DeclaringEntityType);
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Pulling_relationship_to_a_derived_type_one_to_one_with_fk_creates_relationship_on_base()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -303,6 +389,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
 
                 var principalEntityBuilder = modelBuilder.Entity<OrderCombination>();
                 principalEntityBuilder.Ignore(nameof(OrderCombination.SpecialOrder));
+                principalEntityBuilder.Ignore(nameof(OrderCombination.Details));
                 var dependentEntityBuilder = modelBuilder.Entity<Order>();
                 var derivedDependentEntityBuilder = modelBuilder.Entity<SpecialOrder>();
                 derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.BackOrder));
@@ -320,7 +407,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Same(derivedDependentEntityBuilder.Metadata, newFk.DeclaringEntityType);
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Pulling_relationship_to_a_derived_type_with_fk_creates_relationships_on_other_derived_types()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -333,6 +420,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 var derivedDependentEntityBuilder = modelBuilder.Entity<SpecialOrder>();
                 derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.BackOrder));
                 derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.SpecialCustomer));
+                derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.ShippingAddress));
                 var otherDerivedDependentEntityBuilder = modelBuilder.Entity<BackOrder>();
                 otherDerivedDependentEntityBuilder.Ignore(nameof(BackOrder.SpecialOrder));
 
@@ -352,7 +440,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Equal(nameof(Order.CustomerId), otherDerivedFk.Properties.Single().Name);
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Can_promote_shadow_fk_to_the_base_type()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -365,12 +453,14 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 var dependentEntityBuilder = modelBuilder.Entity<Order>();
                 dependentEntityBuilder.Ignore(e => e.Customer);
                 var derivedDependentEntityBuilder = modelBuilder.Entity<SpecialOrder>();
-                derivedDependentEntityBuilder.Ignore(e => e.SpecialCustomerId);
+                derivedDependentEntityBuilder.Ignore(e => e.ShippingAddress);
 
                 dependentEntityBuilder
                     .HasOne<SpecialCustomer>()
                     .WithMany()
                     .HasForeignKey(nameof(SpecialOrder.SpecialCustomerId));
+
+                modelBuilder.FinalizeModel();
 
                 var newFk = dependentEntityBuilder.Metadata.GetDeclaredForeignKeys().Single();
                 Assert.NotEqual(newFk, derivedDependentEntityBuilder.Metadata.GetDeclaredForeignKeys().Single());
@@ -379,7 +469,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Equal(nameof(SpecialOrder.SpecialCustomerId), newFk.Properties.Single().Name);
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Removing_a_key_triggers_fk_discovery_on_derived_types()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -393,6 +483,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 var dependentEntityBuilder = modelBuilder.Entity<Order>();
                 dependentEntityBuilder.Ignore(nameof(Order.Customer));
                 var derivedDependentEntityBuilder = modelBuilder.Entity<SpecialOrder>();
+                derivedDependentEntityBuilder.Ignore(nameof(SpecialOrder.ShippingAddress));
                 dependentEntityBuilder.Property<int?>("SpecialCustomerId");
 
                 derivedPrincipalEntityBuilder
@@ -413,7 +504,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Same(derivedPrincipalEntityBuilder.Metadata, newFk.PrincipalEntityType);
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Index_removed_when_covered_by_an_inherited_foreign_key()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -421,25 +512,33 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 modelBuilder.Ignore<OrderDetails>();
                 modelBuilder.Ignore<BackOrder>();
                 modelBuilder.Ignore<SpecialCustomer>();
-                modelBuilder.Ignore<SpecialOrder>();
 
                 var principalEntityBuilder = modelBuilder.Entity<Customer>();
                 var derivedPrincipalEntityBuilder = modelBuilder.Entity<OtherCustomer>();
                 var dependentEntityBuilder = modelBuilder.Entity<Order>();
                 var derivedDependentEntityBuilder = modelBuilder.Entity<BackOrder>();
 
-                principalEntityBuilder.HasMany(c => c.Orders).WithOne(o => o.Customer)
-                    .HasForeignKey(o => new { o.CustomerId, o.AnotherCustomerId })
-                    .HasPrincipalKey(c => new { c.Id, c.AlternateKey });
-
-                derivedPrincipalEntityBuilder.HasMany<BackOrder>().WithOne()
-                    .HasForeignKey(o => new { o.CustomerId })
-                    .HasPrincipalKey(c => new { c.Id });
-
                 var dependentEntityType = dependentEntityBuilder.Metadata;
                 var derivedDependentEntityType = derivedDependentEntityBuilder.Metadata;
+
+                Assert.Empty(derivedDependentEntityType.GetDeclaredIndexes());
+
+                principalEntityBuilder.HasMany(c => c.Orders).WithOne(o => o.Customer)
+                    .HasForeignKey(
+                        o => new { o.CustomerId, o.AnotherCustomerId })
+                    .HasPrincipalKey(
+                        c => new { c.Id, c.AlternateKey });
+
+                Assert.Empty(derivedDependentEntityType.GetDeclaredIndexes());
+
+                derivedPrincipalEntityBuilder.HasMany<BackOrder>().WithOne()
+                    .HasForeignKey(
+                        o => new { o.CustomerId })
+                    .HasPrincipalKey(
+                        c => new { c.Id });
+
                 var fk = dependentEntityType.GetForeignKeys().Single();
-                Assert.Equal(1, dependentEntityType.GetIndexes().Count());
+                Assert.Single(dependentEntityType.GetIndexes());
                 Assert.False(dependentEntityType.FindIndex(fk.Properties).IsUnique);
                 Assert.False(derivedDependentEntityType.GetDeclaredForeignKeys().Single().IsUnique);
                 Assert.Empty(derivedDependentEntityType.GetDeclaredIndexes());
@@ -460,19 +559,27 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 derivedDependentEntityBuilder.HasBaseType<Order>();
 
                 fk = dependentEntityType.GetForeignKeys().Single();
-                Assert.Equal(1, dependentEntityType.GetIndexes().Count());
+                Assert.Single(dependentEntityType.GetIndexes());
                 Assert.False(dependentEntityType.FindIndex(fk.Properties).IsUnique);
-                Assert.False(derivedDependentEntityType.GetDeclaredForeignKeys().Single().IsUnique);
-                Assert.Empty(derivedDependentEntityType.GetDeclaredIndexes());
 
-                AssertEqual(initialProperties, derivedDependentEntityType.GetProperties());
+                AssertEqual(initialProperties, derivedDependentEntityType.GetProperties(), new PropertyComparer(compareAnnotations: false));
                 AssertEqual(initialKeys, derivedDependentEntityType.GetKeys());
                 AssertEqual(initialIndexes, derivedDependentEntityType.GetIndexes());
                 AssertEqual(initialForeignKeys, derivedDependentEntityType.GetForeignKeys());
 
                 principalEntityBuilder.HasOne<Order>().WithOne()
-                    .HasPrincipalKey<Customer>(c => new { c.Id })
-                    .HasForeignKey<Order>(o => new { o.CustomerId });
+                    .HasPrincipalKey<Customer>(
+                        c => new { c.Id })
+                    .HasForeignKey<Order>(
+                        o => new { o.CustomerId });
+
+                modelBuilder.FinalizeModel();
+
+                var (Level, _, Message, _, _) = modelBuilder.ModelLoggerFactory.Log.Single(e => e.Id == CoreEventId.RedundantIndexRemoved);
+                Assert.Equal(LogLevel.Debug, Level);
+                Assert.Equal(
+                    CoreResources.LogRedundantIndexRemoved(new TestLogger<TestLoggingDefinitions>()).GenerateMessage(
+                        "{'CustomerId'}", nameof(Order), "{'CustomerId', 'AnotherCustomerId'}"), Message);
 
                 fk = dependentEntityType.GetForeignKeys().Single(foreignKey => foreignKey.DependentToPrincipal == null);
                 Assert.Equal(2, dependentEntityType.GetIndexes().Count());
@@ -480,7 +587,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Empty(derivedDependentEntityType.GetDeclaredIndexes());
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Index_removed_when_covered_by_an_inherited_index()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -488,21 +595,21 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 modelBuilder.Ignore<OrderDetails>();
                 modelBuilder.Ignore<BackOrder>();
                 modelBuilder.Ignore<SpecialCustomer>();
-                modelBuilder.Ignore<SpecialOrder>();
 
-                var principalEntityBuilder = modelBuilder.Entity<Customer>();
+                modelBuilder.Entity<Customer>();
                 var derivedPrincipalEntityBuilder = modelBuilder.Entity<OtherCustomer>();
                 var dependentEntityBuilder = modelBuilder.Entity<Order>();
                 var derivedDependentEntityBuilder = modelBuilder.Entity<BackOrder>();
 
-                dependentEntityBuilder.HasIndex(o => new { o.CustomerId, o.AnotherCustomerId })
+                dependentEntityBuilder.HasIndex(
+                        o => new { o.CustomerId, o.AnotherCustomerId })
                     .IsUnique();
 
                 derivedPrincipalEntityBuilder.HasMany<BackOrder>().WithOne()
-                    .HasPrincipalKey(c => new { c.Id })
-                    .HasForeignKey(o => new { o.CustomerId });
-
-                modelBuilder.Validate();
+                    .HasPrincipalKey(
+                        c => new { c.Id })
+                    .HasForeignKey(
+                        o => new { o.CustomerId });
 
                 var dependentEntityType = dependentEntityBuilder.Metadata;
                 var derivedDependentEntityType = derivedDependentEntityBuilder.Metadata;
@@ -526,7 +633,13 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.False(derivedDependentEntityType.FindIndex(derivedFk.Properties).IsUnique);
 
                 derivedDependentEntityBuilder.HasBaseType<Order>();
-                modelBuilder.Validate();
+
+                modelBuilder.FinalizeModel();
+
+                var indexRemoveMessage =
+                    CoreResources.LogRedundantIndexRemoved(new TestLogger<TestLoggingDefinitions>()).GenerateMessage(
+                        "{'CustomerId'}", nameof(Order), "{'CustomerId', 'AnotherCustomerId'}");
+                Assert.Equal(1, modelBuilder.ModelLoggerFactory.Log.Count(l => l.Message == indexRemoveMessage));
 
                 var baseFK = dependentEntityType.GetForeignKeys().Single();
                 var baseIndex = dependentEntityType.FindIndex(baseFK.Properties);
@@ -535,19 +648,13 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.False(derivedDependentEntityType.GetDeclaredForeignKeys().Single().IsUnique);
                 Assert.Empty(derivedDependentEntityType.GetDeclaredIndexes());
 
-                AssertEqual(initialProperties, derivedDependentEntityType.GetProperties());
+                AssertEqual(initialProperties, derivedDependentEntityType.GetProperties(), new PropertyComparer(false));
                 AssertEqual(initialKeys, derivedDependentEntityType.GetKeys());
                 AssertEqual(initialIndexes, derivedDependentEntityType.GetIndexes());
                 AssertEqual(initialForeignKeys, derivedDependentEntityType.GetForeignKeys());
-
-                dependentEntityBuilder.HasIndex(o => new { o.CustomerId, o.AnotherCustomerId })
-                    .IsUnique(false);
-
-                Assert.True(dependentEntityType.GetIndexes().All(i => !i.IsUnique));
-                Assert.Empty(derivedDependentEntityType.GetDeclaredIndexes());
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Setting_base_type_handles_require_value_generator_properly()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -559,7 +666,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Equal(ValueGenerated.Never, fkProperty.ValueGenerated);
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Can_create_relationship_between_base_type_and_derived_type()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -576,7 +683,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Equal(nameof(SpecialBookLabel.Id), relationshipBuilder.Metadata.PrincipalKey.Properties.Single().Name);
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Removing_derived_type_make_sure_that_entity_type_is_removed_from_directly_derived_type()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -587,18 +694,29 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Empty(modelBuilder.Model.FindEntityType(typeof(BookLabel).FullName).GetDirectlyDerivedTypes());
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Can_ignore_base_entity_type()
             {
                 var modelBuilder = CreateModelBuilder();
                 modelBuilder.Entity<SpecialBookLabel>();
                 modelBuilder.Entity<AnotherBookLabel>();
+                modelBuilder.Entity<Book>().HasOne<SpecialBookLabel>().WithOne().HasForeignKey<Book>();
                 modelBuilder.Ignore<BookLabel>();
 
-                Assert.Null(modelBuilder.Model.FindEntityType(typeof(BookLabel).FullName));
+                var model = modelBuilder.Model;
+                Assert.Null(model.FindEntityType(typeof(BookLabel).FullName));
+                foreach (var entityType in model.GetEntityTypes())
+                {
+                    Assert.Empty(
+                        entityType.GetForeignKeys()
+                            .Where(fk => fk.PrincipalEntityType.ClrType == typeof(BookLabel)));
+                    Assert.Empty(
+                        entityType.GetForeignKeys()
+                            .Where(fk => fk.PrincipalKey.DeclaringEntityType.ClrType == typeof(BookLabel)));
+                }
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Relationships_are_discovered_on_the_base_entity_type()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -614,7 +732,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Null(anotherNavigation.FindInverse());
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Can_reconfigure_inherited_intraHierarchical_relationship()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -635,7 +753,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Equal(new[] { fk }, extraSpecialBookLabelEntityBuilder.Metadata.GetForeignKeys());
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Relationships_on_derived_types_are_discovered_first_if_base_is_one_sided()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -658,42 +776,50 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Empty(modelBuilder.Model.FindEntityType(typeof(CityViewModel)).GetForeignKeys());
 
                 modelBuilder.Entity<CityViewModel>();
-                modelBuilder.Validate();
+                modelBuilder.FinalizeModel();
             }
 
-            [Fact]
-            public virtual void Can_remove_objects_in_derived_type_which_was_set_using_data_annotation_while_setting_base_type_by_convention()
+            [ConditionalFact]
+            public virtual void
+                Can_remove_objects_in_derived_type_which_was_set_using_data_annotation_while_setting_base_type_by_convention()
             {
                 var modelBuilder = CreateModelBuilder();
 
-                var derivedEntityType = modelBuilder.Entity<DerivedTypeWithKeyAnnotation>().Metadata;
+                var derivedEntityType = (EntityType)modelBuilder.Entity<DerivedTypeWithKeyAnnotation>().Metadata;
                 var baseEntityType = (EntityType)modelBuilder.Entity<BaseTypeWithKeyAnnotation>().Metadata;
 
                 Assert.Equal(baseEntityType, derivedEntityType.BaseType);
                 Assert.Equal(ConfigurationSource.DataAnnotation, baseEntityType.GetPrimaryKeyConfigurationSource());
-                Assert.Equal(ConfigurationSource.DataAnnotation, baseEntityType.FindNavigation(nameof(BaseTypeWithKeyAnnotation.Navigation)).ForeignKey.GetConfigurationSource());
-                Assert.Equal(ConfigurationSource.Convention, baseEntityType.GetBaseTypeConfigurationSource());
+                Assert.Equal(
+                    ConfigurationSource.DataAnnotation,
+                    baseEntityType.FindNavigation(nameof(BaseTypeWithKeyAnnotation.Navigation)).ForeignKey.GetConfigurationSource());
+                Assert.Equal(ConfigurationSource.Convention, derivedEntityType.GetBaseTypeConfigurationSource());
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Cannot_remove_objects_in_derived_type_which_was_set_using_explicit_while_setting_base_type_by_convention()
             {
                 var modelBuilder = CreateModelBuilder();
 
                 var derivedEntityTypeBuilder = modelBuilder.Entity<DerivedTypeWithKeyAnnotation>();
                 derivedEntityTypeBuilder.HasKey(e => e.MyPrimaryKey);
-                derivedEntityTypeBuilder.HasOne(e => e.Navigation).WithOne().HasForeignKey<DerivedTypeWithKeyAnnotation>(e => e.MyPrimaryKey);
+                derivedEntityTypeBuilder.HasOne(e => e.Navigation).WithOne()
+                    .HasForeignKey<DerivedTypeWithKeyAnnotation>(e => e.MyPrimaryKey);
                 var derivedEntityType = (EntityType)derivedEntityTypeBuilder.Metadata;
                 var baseEntityType = (EntityType)modelBuilder.Entity<BaseTypeWithKeyAnnotation>().Metadata;
 
                 Assert.Null(derivedEntityType.BaseType);
                 Assert.Equal(ConfigurationSource.DataAnnotation, baseEntityType.GetPrimaryKeyConfigurationSource());
-                Assert.Equal(ConfigurationSource.DataAnnotation, baseEntityType.FindNavigation(nameof(BaseTypeWithKeyAnnotation.Navigation)).ForeignKey.GetConfigurationSource());
-                Assert.Equal(ConfigurationSource.Explicit, derivedEntityType.FindNavigation(nameof(DerivedTypeWithKeyAnnotation.Navigation)).ForeignKey.GetConfigurationSource());
+                Assert.Equal(
+                    ConfigurationSource.DataAnnotation,
+                    baseEntityType.FindNavigation(nameof(BaseTypeWithKeyAnnotation.Navigation)).ForeignKey.GetConfigurationSource());
+                Assert.Equal(
+                    ConfigurationSource.Explicit,
+                    derivedEntityType.FindNavigation(nameof(DerivedTypeWithKeyAnnotation.Navigation)).ForeignKey.GetConfigurationSource());
                 Assert.Equal(ConfigurationSource.Explicit, derivedEntityType.GetPrimaryKeyConfigurationSource());
             }
 
-            [Fact]
+            [ConditionalFact]
             public virtual void Ordering_of_entityType_discovery_does_not_affect_key_convention()
             {
                 var modelBuilder = CreateModelBuilder();
@@ -712,7 +838,7 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.NotNull(baseEntity2.FindPrimaryKey());
             }
 
-            [Fact] // #7049
+            [ConditionalFact] // #7049
             public void Base_type_can_be_discovered_after_creating_foreign_keys_on_derived()
             {
                 var mb = CreateModelBuilder();
@@ -722,34 +848,34 @@ namespace Microsoft.EntityFrameworkCore.ModelBuilding
                 Assert.Equal(ValueGenerated.OnAdd, mb.Model.FindEntityType(typeof(Q)).FindProperty(nameof(Q.ID)).ValueGenerated);
             }
 
-            public class L
+            protected class L
             {
                 public int Id { get; set; }
                 public IList<T> Ts { get; set; }
             }
 
-            public class T : P
+            protected class T : P
             {
                 public Q D { get; set; }
                 public P P { get; set; }
                 public Q F { get; set; }
             }
 
-            public class P : PBase
+            protected abstract class P : PBase
             {
             }
 
-            public class Q : PBase
+            protected class Q : PBase
             {
             }
 
-            public abstract class PBase
+            protected abstract class PBase
             {
                 public int ID { get; set; }
                 public string Stuff { get; set; }
             }
 
-            public class AL
+            protected class AL
             {
                 public int Id { get; set; }
                 public PBase L { get; set; }

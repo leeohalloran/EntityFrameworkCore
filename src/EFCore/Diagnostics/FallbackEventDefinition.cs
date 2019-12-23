@@ -17,14 +17,20 @@ namespace Microsoft.EntityFrameworkCore.Diagnostics
         /// <summary>
         ///     Creates an event definition instance.
         /// </summary>
+        /// <param name="loggingOptions"> Logging options. </param>
         /// <param name="eventId"> The <see cref="EventId" />. </param>
-        /// <param name="level"> The <see cref="Microsoft.Extensions.Logging.LogLevel" /> at which the event will be logged. </param>
+        /// <param name="level"> The <see cref="LogLevel" /> at which the event will be logged. </param>
+        /// <param name="eventIdCode">
+        ///     A string representing the code that should be passed to <see cref="DbContextOptionsBuilder.ConfigureWarnings" />.
+        /// </param>
         /// <param name="messageFormat"> The parameterized message definition. </param>
         public FallbackEventDefinition(
+            [NotNull] ILoggingOptions loggingOptions,
             EventId eventId,
             LogLevel level,
+            [NotNull] string eventIdCode,
             [NotNull] string messageFormat)
-            : base(eventId, level)
+            : base(loggingOptions, eventId, level, eventIdCode)
         {
             Check.NotEmpty(messageFormat, nameof(messageFormat));
 
@@ -57,7 +63,7 @@ namespace Microsoft.EntityFrameworkCore.Diagnostics
             [NotNull] Action<ILogger> logAction)
             where TLoggerCategory : LoggerCategory<TLoggerCategory>, new()
         {
-            switch (logger.GetLogBehavior(EventId, Level))
+            switch (WarningBehavior)
             {
                 case WarningBehavior.Log:
                     logAction(logger.Logger);

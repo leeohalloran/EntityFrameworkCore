@@ -1,22 +1,25 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-using System.Diagnostics;
 using System.Linq;
 using JetBrains.Annotations;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Microsoft.EntityFrameworkCore.Metadata.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///     any release. You should only use it directly in your code with extreme caution and knowing that
+    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
-    [DebuggerDisplay("{Metadata,nq}")]
-    public class InternalKeyBuilder : InternalMetadataItemBuilder<Key>
+    public class InternalKeyBuilder : InternalModelItemBuilder<Key>, IConventionKeyBuilder
     {
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public InternalKeyBuilder([NotNull] Key key, [NotNull] InternalModelBuilder modelBuilder)
             : base(key, modelBuilder)
@@ -24,15 +27,15 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public virtual InternalKeyBuilder Attach(ConfigurationSource configurationSource)
+        public virtual InternalKeyBuilder Attach(
+            [NotNull] InternalEntityTypeBuilder entityTypeBuilder,
+            ConfigurationSource? primaryKeyConfigurationSource)
         {
-            // TODO: attach to same entity type
-            // Issue #2611
-            var entityTypeBuilder = Metadata.DeclaringEntityType.RootType().Builder;
-
             var propertyNames = Metadata.Properties.Select(p => p.Name).ToList();
             foreach (var propertyName in propertyNames)
             {
@@ -42,11 +45,23 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                 }
             }
 
-            var newKeyBuilder = entityTypeBuilder.HasKey(propertyNames, configurationSource);
+            var newKeyBuilder = entityTypeBuilder.HasKey(propertyNames, Metadata.GetConfigurationSource());
 
             newKeyBuilder?.MergeAnnotationsFrom(Metadata);
 
+            if (primaryKeyConfigurationSource.HasValue
+                && newKeyBuilder != null)
+            {
+                var currentPrimaryKeyConfigurationSource = entityTypeBuilder.Metadata.GetPrimaryKeyConfigurationSource();
+                if (currentPrimaryKeyConfigurationSource?.Overrides(primaryKeyConfigurationSource.Value) != true)
+                {
+                    entityTypeBuilder.PrimaryKey(newKeyBuilder.Metadata.Properties, primaryKeyConfigurationSource.Value);
+                }
+            }
+
             return newKeyBuilder;
         }
+
+        IConventionKey IConventionKeyBuilder.Metadata => Metadata;
     }
 }

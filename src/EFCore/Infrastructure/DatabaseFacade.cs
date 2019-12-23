@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
+using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Utilities;
 
@@ -17,12 +19,10 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
     ///     Instances of this class are typically obtained from <see cref="DbContext.Database" /> and it is not designed
     ///     to be directly constructed in your application code.
     /// </summary>
-    public class DatabaseFacade : IInfrastructure<IServiceProvider>
+    public class DatabaseFacade : IInfrastructure<IServiceProvider>, IDatabaseFacadeDependenciesAccessor
     {
         private readonly DbContext _context;
-        private IDatabaseCreator _databaseCreator;
-        private IDbContextTransactionManager _transactionManager;
-        private IExecutionStrategyFactory _executionStrategyFactory;
+        private IDatabaseFacadeDependencies _dependencies;
 
         /// <summary>
         ///     Initializes a new instance of the <see cref="DatabaseFacade" /> class. Instances of this class are typically
@@ -36,6 +36,9 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
 
             _context = context;
         }
+
+        private IDatabaseFacadeDependencies Dependencies
+            => _dependencies ??= _context.GetService<IDatabaseFacadeDependencies>();
 
         /// <summary>
         ///     <para>
@@ -51,7 +54,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         ///     </para>
         /// </summary>
         /// <returns> True if the database is created, false if it already existed. </returns>
-        public virtual bool EnsureCreated() => DatabaseCreator.EnsureCreated();
+        public virtual bool EnsureCreated() => Dependencies.DatabaseCreator.EnsureCreated();
 
         /// <summary>
         ///     <para>
@@ -71,8 +74,8 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         ///     A task that represents the asynchronous save operation. The task result contains true if the database is created,
         ///     false if it already existed.
         /// </returns>
-        public virtual Task<bool> EnsureCreatedAsync(CancellationToken cancellationToken = default(CancellationToken))
-            => DatabaseCreator.EnsureCreatedAsync(cancellationToken);
+        public virtual Task<bool> EnsureCreatedAsync(CancellationToken cancellationToken = default)
+            => Dependencies.DatabaseCreator.EnsureCreatedAsync(cancellationToken);
 
         /// <summary>
         ///     <para>
@@ -85,7 +88,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         ///     </para>
         /// </summary>
         /// <returns> True if the database is deleted, false if it did not exist. </returns>
-        public virtual bool EnsureDeleted() => DatabaseCreator.EnsureDeleted();
+        public virtual bool EnsureDeleted() => Dependencies.DatabaseCreator.EnsureDeleted();
 
         /// <summary>
         ///     <para>
@@ -102,8 +105,35 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         ///     A task that represents the asynchronous save operation. The task result contains true if the database is deleted,
         ///     false if it did not exist.
         /// </returns>
-        public virtual Task<bool> EnsureDeletedAsync(CancellationToken cancellationToken = default(CancellationToken))
-            => DatabaseCreator.EnsureDeletedAsync(cancellationToken);
+        public virtual Task<bool> EnsureDeletedAsync(CancellationToken cancellationToken = default)
+            => Dependencies.DatabaseCreator.EnsureDeletedAsync(cancellationToken);
+
+        /// <summary>
+        ///     <para>
+        ///         Determines whether or not the database is available and can be connected to.
+        ///     </para>
+        ///     <para>
+        ///         Note that being able to connect to the database does not mean that it is
+        ///         up-to-date with regard to schema creation, etc.
+        ///     </para>
+        /// </summary>
+        /// <returns> <c>True</c> if the database is available; <c>false</c> otherwise. </returns>
+        public virtual bool CanConnect()
+            => Dependencies.DatabaseCreator.CanConnect();
+
+        /// <summary>
+        ///     <para>
+        ///         Determines whether or not the database is available and can be connected to.
+        ///     </para>
+        ///     <para>
+        ///         Note that being able to connect to the database does not mean that it is
+        ///         up-to-date with regard to schema creation, etc.
+        ///     </para>
+        /// </summary>
+        /// <param name="cancellationToken">A <see cref="CancellationToken" /> to observe while waiting for the task to complete.</param>
+        /// <returns> <c>True</c> if the database is available; <c>false</c> otherwise. </returns>
+        public virtual Task<bool> CanConnectAsync(CancellationToken cancellationToken = default)
+            => Dependencies.DatabaseCreator.CanConnectAsync(cancellationToken);
 
         /// <summary>
         ///     Starts a new transaction.
@@ -112,7 +142,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         ///     A <see cref="IDbContextTransaction" /> that represents the started transaction.
         /// </returns>
         public virtual IDbContextTransaction BeginTransaction()
-            => TransactionManager.BeginTransaction();
+            => Dependencies.TransactionManager.BeginTransaction();
 
         /// <summary>
         ///     Asynchronously starts a new transaction.
@@ -122,27 +152,27 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         ///     A task that represents the asynchronous transaction initialization. The task result contains a <see cref="IDbContextTransaction" />
         ///     that represents the started transaction.
         /// </returns>
-        public virtual Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default(CancellationToken))
-            => TransactionManager.BeginTransactionAsync(cancellationToken);
+        public virtual Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+            => Dependencies.TransactionManager.BeginTransactionAsync(cancellationToken);
 
         /// <summary>
         ///     Applies the outstanding operations in the current transaction to the database.
         /// </summary>
         public virtual void CommitTransaction()
-            => TransactionManager.CommitTransaction();
+            => Dependencies.TransactionManager.CommitTransaction();
 
         /// <summary>
         ///     Discards the outstanding operations in the current transaction.
         /// </summary>
         public virtual void RollbackTransaction()
-            => TransactionManager.RollbackTransaction();
+            => Dependencies.TransactionManager.RollbackTransaction();
 
         /// <summary>
         ///     Creates an instance of the configured <see cref="IExecutionStrategy" />.
         /// </summary>
         /// <returns>An <see cref="IExecutionStrategy" /> instance.</returns>
         public virtual IExecutionStrategy CreateExecutionStrategy()
-            => ExecutionStrategyFactory.Create();
+            => Dependencies.ExecutionStrategyFactory.Create();
 
         /// <summary>
         ///     <para>
@@ -156,12 +186,12 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         ///     </para>
         ///     <para>
         ///         For relational databases, the underlying DbTransaction can be obtained using the
-        ///         'Microsoft.EntityFrameworkCore.Storage.GetDbTransaction'extension method
+        ///         'Microsoft.EntityFrameworkCore.Storage.GetDbTransaction' extension method
         ///         on the returned <see cref="IDbContextTransaction" />.
         ///     </para>
         /// </summary>
         public virtual IDbContextTransaction CurrentTransaction
-            => TransactionManager.CurrentTransaction;
+            => Dependencies.TransactionManager.CurrentTransaction;
 
         /// <summary>
         ///     <para>
@@ -188,7 +218,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         ///     <para>
         ///         Returns the name of the database provider currently in use.
         ///         The name is typically the name of the provider assembly.
-        ///         It is usually easier to use a sugar method auch as 'IsSqlServer()' instead of
+        ///         It is usually easier to use a sugar method such as 'IsSqlServer()' instead of
         ///         calling this method directly.
         ///     </para>
         ///     <para>
@@ -199,6 +229,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         ///     </para>
         /// </summary>
         public virtual string ProviderName
+            // Needs to be lazy because used from OnModelCreating
             => _context.GetService<IEnumerable<IDatabaseProvider>>()
                 ?.Select(p => p.Name)
                 .FirstOrDefault();
@@ -214,13 +245,48 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         /// </summary>
         IServiceProvider IInfrastructure<IServiceProvider>.Instance => ((IInfrastructure<IServiceProvider>)_context).Instance;
 
-        private IDbContextTransactionManager TransactionManager
-            => _transactionManager ?? (_transactionManager = this.GetService<IDbContextTransactionManager>());
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        IDatabaseFacadeDependencies IDatabaseFacadeDependenciesAccessor.Dependencies
+            => Dependencies;
 
-        private IDatabaseCreator DatabaseCreator
-            => _databaseCreator ?? (_databaseCreator = this.GetService<IDatabaseCreator>());
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        DbContext IDatabaseFacadeDependenciesAccessor.Context
+            => _context;
 
-        private IExecutionStrategyFactory ExecutionStrategyFactory
-            => _executionStrategyFactory ?? (_executionStrategyFactory = this.GetService<IExecutionStrategyFactory>());
+        #region Hidden System.Object members
+
+        /// <summary>
+        ///     Returns a string that represents the current object.
+        /// </summary>
+        /// <returns> A string that represents the current object. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override string ToString() => base.ToString();
+
+        /// <summary>
+        ///     Determines whether the specified object is equal to the current object.
+        /// </summary>
+        /// <param name="obj"> The object to compare with the current object. </param>
+        /// <returns> true if the specified object is equal to the current object; otherwise, false. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override bool Equals(object obj) => base.Equals(obj);
+
+        /// <summary>
+        ///     Serves as the default hash function.
+        /// </summary>
+        /// <returns> A hash code for the current object. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override int GetHashCode() => base.GetHashCode();
+
+        #endregion
     }
 }

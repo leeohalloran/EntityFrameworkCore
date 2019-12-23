@@ -1,15 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <Import Project="..\..\build\common.props" />
-
   <PropertyGroup>
     <Description>In-memory database provider for Entity Framework Core (to be used for testing purposes).</Description>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <MinClientVersion>3.6</MinClientVersion>
     <AssemblyName>Microsoft.EntityFrameworkCore.InMemory</AssemblyName>
-    <RootNamespace>Microsoft.EntityFrameworkCore</RootNamespace>
+    <RootNamespace>Microsoft.EntityFrameworkCore.InMemory</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageTags>$(PackageTags);In-Memory</PackageTags>
-    <CodeAnalysisRuleSet>..\EFCore.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRuleSet>..\..\EFCore.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\EFCore\EFCore.csproj" />
+    <ProjectReference Include="..\EFCore\EFCore.csproj" PrivateAssets="contentfiles;build" />
   </ItemGroup>
 
   <ItemGroup>
@@ -41,12 +40,16 @@
 
   <ItemGroup>
     <EmbeddedResource Update="Properties\InMemoryStrings.resx">
-      <CustomToolNamespace>Microsoft.EntityFrameworkCore.Internal</CustomToolNamespace>
+      <CustomToolNamespace>Microsoft.EntityFrameworkCore.InMemory.Internal</CustomToolNamespace>
     </EmbeddedResource>
   </ItemGroup>
-  
+
   <ItemGroup>
-    <PackageReference Include="StyleCop.Analyzers" Version="$(StyleCopAnalyzersVersion)" PrivateAssets="All" />
+    <PackageReference Include="StyleCop.Analyzers" Version="$(StyleCopAnalyzersPackageVersion)" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="..\stylecop.json" />
   </ItemGroup>
 
 </Project>

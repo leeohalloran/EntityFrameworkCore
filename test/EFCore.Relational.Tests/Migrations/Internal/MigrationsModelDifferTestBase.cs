@@ -3,10 +3,16 @@
 
 using System;
 using System.Collections.Generic;
-using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.ChangeTracking.Internal;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.TestUtilities;
+using Microsoft.EntityFrameworkCore.Update;
+using Microsoft.EntityFrameworkCore.Update.Internal;
+using Microsoft.EntityFrameworkCore.Utilities;
+using Xunit;
 
 namespace Microsoft.EntityFrameworkCore.Migrations.Internal
 {
@@ -15,75 +21,138 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Internal
         protected void Execute(
             Action<ModelBuilder> buildSourceAction,
             Action<ModelBuilder> buildTargetAction,
-            Action<IReadOnlyList<MigrationOperation>> assertAction)
-            => Execute(m => { }, buildSourceAction, buildTargetAction, assertAction);
+            Action<IReadOnlyList<MigrationOperation>> assertAction,
+            bool skipSourceConventions = false)
+            => Execute(m => { }, buildSourceAction, buildTargetAction, assertAction, null, skipSourceConventions);
 
         protected void Execute(
             Action<ModelBuilder> buildCommonAction,
             Action<ModelBuilder> buildSourceAction,
             Action<ModelBuilder> buildTargetAction,
-            Action<IReadOnlyList<MigrationOperation>> assertAction)
+            Action<IReadOnlyList<MigrationOperation>> assertAction,
+            bool skipSourceConventions = false)
+            => Execute(buildCommonAction, buildSourceAction, buildTargetAction, assertAction, null, skipSourceConventions);
+
+        protected void Execute(
+            Action<ModelBuilder> buildCommonAction,
+            Action<ModelBuilder> buildSourceAction,
+            Action<ModelBuilder> buildTargetAction,
+            Action<IReadOnlyList<MigrationOperation>> assertActionUp,
+            Action<IReadOnlyList<MigrationOperation>> assertActionDown,
+            bool skipSourceConventions = false)
+            => Execute(
+                buildCommonAction, buildSourceAction, buildTargetAction, assertActionUp, assertActionDown, null, skipSourceConventions);
+
+        protected void Execute(
+            Action<ModelBuilder> buildCommonAction,
+            Action<ModelBuilder> buildSourceAction,
+            Action<ModelBuilder> buildTargetAction,
+            Action<IReadOnlyList<MigrationOperation>> assertActionUp,
+            Action<IReadOnlyList<MigrationOperation>> assertActionDown,
+            Action<DbContextOptionsBuilder> builderOptionsAction,
+            bool skipSourceConventions = false)
         {
-            var sourceModelBuilder = CreateModelBuilder();
+            var sourceModelBuilder = CreateModelBuilder(skipSourceConventions);
             buildCommonAction(sourceModelBuilder);
             buildSourceAction(sourceModelBuilder);
+            var sourceModel = sourceModelBuilder.FinalizeModel();
+            var sourceOptionsBuilder = TestHelpers
+                .AddProviderOptions(new DbContextOptionsBuilder())
+                .UseModel(sourceModel)
+                .EnableSensitiveDataLogging();
 
-            var targetModelBuilder = CreateModelBuilder();
+            var targetModelBuilder = CreateModelBuilder(skipConventions: false);
             buildCommonAction(targetModelBuilder);
             buildTargetAction(targetModelBuilder);
+            var targetModel = targetModelBuilder.FinalizeModel();
+            var targetOptionsBuilder = TestHelpers
+                .AddProviderOptions(new DbContextOptionsBuilder())
+                .UseModel(targetModel)
+                .EnableSensitiveDataLogging();
 
-            var modelDiffer = CreateModelDiffer();
-
-            var operations = modelDiffer.GetDifferences(sourceModelBuilder.Model, targetModelBuilder.Model);
-
-            assertAction(operations);
-        }
-
-        protected abstract ModelBuilder CreateModelBuilder();
-
-        protected virtual MigrationsModelDiffer CreateModelDiffer()
-            => new MigrationsModelDiffer(
-                new ConcreteTypeMapper(new RelationalTypeMapperDependencies()),
-                new MigrationsAnnotationProvider(new MigrationsAnnotationProviderDependencies()));
-
-        private class ConcreteTypeMapper : RelationalTypeMapper
-        {
-            public ConcreteTypeMapper(RelationalTypeMapperDependencies dependencies)
-                : base(dependencies)
+            if (builderOptionsAction != null)
             {
+                builderOptionsAction(sourceOptionsBuilder);
+                builderOptionsAction(targetOptionsBuilder);
             }
 
-            protected override string GetColumnType(IProperty property) => property.TestProvider().ColumnType;
+            var modelDiffer = CreateModelDiffer(targetOptionsBuilder.Options);
 
-            public override RelationalTypeMapping FindMapping(Type clrType)
-                => clrType == typeof(string)
-                    ? new StringTypeMapping("varchar(4000)", dbType: null, unicode: false, size: 4000)
-                    : base.FindMapping(clrType);
+            var operationsUp = modelDiffer.GetDifferences(sourceModel, targetModel);
+            assertActionUp(operationsUp);
 
-            protected override RelationalTypeMapping FindCustomMapping(IProperty property)
-                => property.ClrType == typeof(string) && (property.GetMaxLength().HasValue || property.IsUnicode().HasValue)
-                    ? new StringTypeMapping(((property.IsUnicode() ?? true) ? "n" : "") + "varchar(" + (property.GetMaxLength() ?? 767) + ")", dbType: null, unicode: false, size: property.GetMaxLength())
-                    : base.FindCustomMapping(property);
+            if (assertActionDown != null)
+            {
+                modelDiffer = CreateModelDiffer(sourceOptionsBuilder.Options);
 
-            private readonly IReadOnlyDictionary<Type, RelationalTypeMapping> _simpleMappings
-                = new Dictionary<Type, RelationalTypeMapping>
+                var operationsDown = modelDiffer.GetDifferences(targetModel, sourceModel);
+                assertActionDown(operationsDown);
+            }
+        }
+
+        protected void AssertMultidimensionalArray<T>(T[,] values, params Action<T>[] assertions)
+            => Assert.Collection(ToOnedimensionalArray(values), assertions);
+
+        protected static T[] ToOnedimensionalArray<T>(T[,] values, bool firstDimension = false)
+        {
+            Check.DebugAssert(
+                values.GetLength(firstDimension ? 1 : 0) == 1,
+                $"Length of dimension {(firstDimension ? 1 : 0)} is not 1.");
+
+            var result = new T[values.Length];
+            for (var i = 0; i < values.Length; i++)
+            {
+                result[i] = firstDimension
+                    ? values[i, 0]
+                    : values[0, i];
+            }
+
+            return result;
+        }
+
+        protected static T[][] ToJaggedArray<T>(T[,] twoDimensionalArray, bool firstDimension = false)
+        {
+            var rowsFirstIndex = twoDimensionalArray.GetLowerBound(0);
+            var rowsLastIndex = twoDimensionalArray.GetUpperBound(0);
+            var numberOfRows = rowsLastIndex - rowsFirstIndex + 1;
+
+            var columnsFirstIndex = twoDimensionalArray.GetLowerBound(1);
+            var columnsLastIndex = twoDimensionalArray.GetUpperBound(1);
+            var numberOfColumns = columnsLastIndex - columnsFirstIndex + 1;
+
+            var jaggedArray = new T[numberOfRows][];
+            for (var i = 0; i < numberOfRows; i++)
+            {
+                jaggedArray[i] = new T[numberOfColumns];
+
+                for (var j = 0; j < numberOfColumns; j++)
                 {
-                    { typeof(int), new IntTypeMapping("int") },
-                    { typeof(bool), new BoolTypeMapping("boolean") }
-                };
+                    jaggedArray[i][j] = twoDimensionalArray[i + rowsFirstIndex, j + columnsFirstIndex];
+                }
+            }
 
-            private readonly IReadOnlyDictionary<string, RelationalTypeMapping> _simpleNameMappings
-                = new Dictionary<string, RelationalTypeMapping>
-                {
-                    { "varchar", new StringTypeMapping("varchar", dbType: null, unicode: false, size: null) },
-                    { "bigint", new LongTypeMapping("bigint") }
-                };
+            return jaggedArray;
+        }
 
-            protected override IReadOnlyDictionary<Type, RelationalTypeMapping> GetClrTypeMappings()
-                => _simpleMappings;
+        protected abstract TestHelpers TestHelpers { get; }
 
-            protected override IReadOnlyDictionary<string, RelationalTypeMapping> GetStoreTypeMappings()
-                => _simpleNameMappings;
+        protected virtual ModelBuilder CreateModelBuilder(bool skipConventions)
+            => skipConventions
+                ? new ModelBuilder(new ConventionSet())
+                : TestHelpers.CreateConventionBuilder(skipValidation: true);
+
+        protected virtual MigrationsModelDiffer CreateModelDiffer(DbContextOptions options)
+        {
+            var ctx = TestHelpers.CreateContext(options);
+            return new MigrationsModelDiffer(
+                new TestRelationalTypeMappingSource(
+                    TestServiceFactory.Instance.Create<TypeMappingSourceDependencies>(),
+                    TestServiceFactory.Instance.Create<RelationalTypeMappingSourceDependencies>()),
+                new MigrationsAnnotationProvider(
+                    new MigrationsAnnotationProviderDependencies()),
+                ctx.GetService<IChangeDetector>(),
+                ctx.GetService<IUpdateAdapterFactory>(),
+                ctx.GetService<CommandBatchPreparerDependencies>());
         }
     }
 }

@@ -2,6 +2,9 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.ComponentModel;
+using System.Linq;
+using System.Reflection;
 using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -37,6 +40,22 @@ namespace Microsoft.EntityFrameworkCore
             Check.NotNull(conventions, nameof(conventions));
 
             _builder = new InternalModelBuilder(new Model(conventions));
+
+            _builder.Metadata.SetProductVersion(ProductInfo.GetVersion());
+        }
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        [EntityFrameworkInternal]
+        public ModelBuilder([NotNull] IMutableModel model)
+        {
+            Check.NotNull(model, nameof(model));
+
+            _builder = ((Model)model).Builder;
         }
 
         /// <summary>
@@ -80,7 +99,7 @@ namespace Microsoft.EntityFrameworkCore
         /// <returns> An object that can be used to configure the entity type. </returns>
         public virtual EntityTypeBuilder<TEntity> Entity<TEntity>()
             where TEntity : class
-            => new EntityTypeBuilder<TEntity>(Builder.Entity(typeof(TEntity), ConfigurationSource.Explicit));
+            => new EntityTypeBuilder<TEntity>(Builder.Entity(typeof(TEntity), ConfigurationSource.Explicit).Metadata);
 
         /// <summary>
         ///     Returns an object that can be used to configure a given entity type in the model.
@@ -92,7 +111,7 @@ namespace Microsoft.EntityFrameworkCore
         {
             Check.NotNull(type, nameof(type));
 
-            return new EntityTypeBuilder(Builder.Entity(type, ConfigurationSource.Explicit));
+            return new EntityTypeBuilder(Builder.Entity(type, ConfigurationSource.Explicit).Metadata);
         }
 
         /// <summary>
@@ -106,7 +125,7 @@ namespace Microsoft.EntityFrameworkCore
         {
             Check.NotEmpty(name, nameof(name));
 
-            return new EntityTypeBuilder(Builder.Entity(name, ConfigurationSource.Explicit));
+            return new EntityTypeBuilder(Builder.Entity(name, ConfigurationSource.Explicit).Metadata);
         }
 
         /// <summary>
@@ -236,6 +255,80 @@ namespace Microsoft.EntityFrameworkCore
         }
 
         /// <summary>
+        ///     Applies configuration from all <see cref="IEntityTypeConfiguration{TEntity}" /> />
+        ///     instances that are defined in provided assembly.
+        /// </summary>
+        /// <param name="assembly"> The assembly to scan. </param>
+        /// <param name="predicate"> Optional predicate to filter types within the assembly. </param>
+        /// <returns>
+        ///     The same <see cref="ModelBuilder" /> instance so that additional configuration calls can be chained.
+        /// </returns>
+        public virtual ModelBuilder ApplyConfigurationsFromAssembly(
+            [NotNull] Assembly assembly, [CanBeNull] Func<Type, bool> predicate = null)
+        {
+            var applyEntityConfigurationMethod = typeof(ModelBuilder)
+                .GetMethods()
+                .Single(
+                    e => e.Name == nameof(ApplyConfiguration)
+                        && e.ContainsGenericParameters
+                        && e.GetParameters().SingleOrDefault()?.ParameterType.GetGenericTypeDefinition()
+                        == typeof(IEntityTypeConfiguration<>));
+
+            foreach (var type in assembly.GetConstructibleTypes())
+            {
+                // Only accept types that contain a parameterless constructor, are not abstract and satisfy a predicate if it was used.
+                if (type.GetConstructor(Type.EmptyTypes) == null
+                    || (!predicate?.Invoke(type) ?? false))
+                {
+                    continue;
+                }
+
+                foreach (var @interface in type.GetInterfaces())
+                {
+                    if (!@interface.IsGenericType)
+                    {
+                        continue;
+                    }
+
+                    if (@interface.GetGenericTypeDefinition() == typeof(IEntityTypeConfiguration<>))
+                    {
+                        var target = applyEntityConfigurationMethod.MakeGenericMethod(@interface.GenericTypeArguments[0]);
+                        target.Invoke(this, new[] { Activator.CreateInstance(type) });
+                    }
+                }
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        ///     Marks an entity type as owned. All references to this type will be configured as
+        ///     separate owned type instances.
+        /// </summary>
+        /// <typeparam name="T"> The entity type to be configured. </typeparam>
+        public virtual OwnedEntityTypeBuilder<T> Owned<T>()
+            where T : class
+        {
+            Builder.Owned(typeof(T), ConfigurationSource.Explicit);
+
+            return new OwnedEntityTypeBuilder<T>();
+        }
+
+        /// <summary>
+        ///     Marks an entity type as owned. All references to this type will be configured as
+        ///     separate owned type instances.
+        /// </summary>
+        /// <param name="type"> The entity type to be configured. </param>
+        public virtual OwnedEntityTypeBuilder Owned([NotNull] Type type)
+        {
+            Check.NotNull(type, nameof(type));
+
+            Builder.Owned(type, ConfigurationSource.Explicit);
+
+            return new OwnedEntityTypeBuilder();
+        }
+
+        /// <summary>
         ///     Configures the default <see cref="ChangeTrackingStrategy" /> to be used for this model.
         ///     This strategy indicates how the context detects changes to properties for an instance of an entity type.
         /// </summary>
@@ -245,7 +338,7 @@ namespace Microsoft.EntityFrameworkCore
         /// </returns>
         public virtual ModelBuilder HasChangeTrackingStrategy(ChangeTrackingStrategy changeTrackingStrategy)
         {
-            Builder.Metadata.ChangeTrackingStrategy = changeTrackingStrategy;
+            Builder.Metadata.SetChangeTrackingStrategy(changeTrackingStrategy);
 
             return this;
         }
@@ -257,7 +350,7 @@ namespace Microsoft.EntityFrameworkCore
         ///     <para>
         ///         By default, the backing field, if one is found by convention or has been specified, is used when
         ///         new objects are constructed, typically when entities are queried from the database.
-        ///         Properties are used for all other accesses.  Calling this method witll change that behavior
+        ///         Properties are used for all other accesses. Calling this method will change that behavior
         ///         for all properties in the model as described in the <see cref="PropertyAccessMode" /> enum.
         ///     </para>
         /// </summary>
@@ -272,6 +365,40 @@ namespace Microsoft.EntityFrameworkCore
             return this;
         }
 
+        /// <summary>
+        ///     Forces post-processing on the model such that it is ready for use by the runtime. This post
+        ///     processing happens automatically when using <see cref="DbContext.OnModelCreating" />; this method allows it to be run
+        ///     explicitly in cases where the automatic execution is not possible.
+        /// </summary>
+        /// <returns> The finalized <see cref="IModel" />. </returns>
+        public virtual IModel FinalizeModel() => Builder.Metadata.FinalizeModel();
+
         private InternalModelBuilder Builder => this.GetInfrastructure();
+
+        #region Hidden System.Object members
+
+        /// <summary>
+        ///     Returns a string that represents the current object.
+        /// </summary>
+        /// <returns> A string that represents the current object. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override string ToString() => base.ToString();
+
+        /// <summary>
+        ///     Determines whether the specified object is equal to the current object.
+        /// </summary>
+        /// <param name="obj"> The object to compare with the current object. </param>
+        /// <returns> true if the specified object is equal to the current object; otherwise, false. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override bool Equals(object obj) => base.Equals(obj);
+
+        /// <summary>
+        ///     Serves as the default hash function.
+        /// </summary>
+        /// <returns> A hash code for the current object. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override int GetHashCode() => base.GetHashCode();
+
+        #endregion
     }
 }

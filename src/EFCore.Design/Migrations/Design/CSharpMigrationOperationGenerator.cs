@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.Design;
@@ -134,6 +133,13 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                         .Append("unicode: false");
                 }
 
+                if (operation.IsFixedLength == true)
+                {
+                    builder
+                        .AppendLine(",")
+                        .Append("fixedLength: true");
+                }
+
                 if (operation.MaxLength.HasValue)
                 {
                     builder
@@ -165,7 +171,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                     builder
                         .AppendLine(",")
                         .Append("computedColumnSql: ")
-                        .Append(Code.UnknownLiteral(operation.ComputedColumnSql));
+                        .Append(Code.Literal(operation.ComputedColumnSql));
                 }
                 else if (operation.DefaultValue != null)
                 {
@@ -173,6 +179,14 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                         .AppendLine(",")
                         .Append("defaultValue: ")
                         .Append(Code.UnknownLiteral(operation.DefaultValue));
+                }
+
+                if (operation.Comment != null)
+                {
+                    builder
+                        .AppendLine(",")
+                        .Append("comment: ")
+                        .Append(Code.Literal(operation.Comment));
                 }
 
                 builder.Append(")");
@@ -378,6 +392,45 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
         }
 
         /// <summary>
+        ///     Generates code for an <see cref="CreateCheckConstraintOperation" />.
+        /// </summary>
+        /// <param name="operation"> The operation. </param>
+        /// <param name="builder"> The builder code is added to. </param>
+        protected virtual void Generate([NotNull] CreateCheckConstraintOperation operation, [NotNull] IndentedStringBuilder builder)
+        {
+            Check.NotNull(operation, nameof(operation));
+            Check.NotNull(builder, nameof(builder));
+
+            builder.AppendLine(".CreateCheckConstraint(");
+
+            using (builder.Indent())
+            {
+                builder
+                    .Append("name: ")
+                    .Append(Code.Literal(operation.Name));
+
+                if (operation.Schema != null)
+                {
+                    builder
+                        .AppendLine(",")
+                        .Append("schema: ")
+                        .Append(Code.Literal(operation.Schema));
+                }
+
+                builder
+                    .AppendLine(",")
+                    .Append("table: ")
+                    .Append(Code.Literal(operation.Table))
+                    .AppendLine(",")
+                    .Append("sql: ")
+                    .Append(Code.Literal(operation.Sql))
+                    .Append(")");
+
+                Annotations(operation.GetAnnotations(), builder);
+            }
+        }
+
+        /// <summary>
         ///     Generates code for an <see cref="AlterColumnOperation" />.
         /// </summary>
         /// <param name="operation"> The operation. </param>
@@ -425,6 +478,13 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                         .Append("unicode: false");
                 }
 
+                if (operation.IsFixedLength == true)
+                {
+                    builder
+                        .AppendLine(",")
+                        .Append("fixedLength: true");
+                }
+
                 if (operation.MaxLength.HasValue)
                 {
                     builder.AppendLine(",")
@@ -455,7 +515,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                     builder
                         .AppendLine(",")
                         .Append("computedColumnSql: ")
-                        .Append(Code.UnknownLiteral(operation.ComputedColumnSql));
+                        .Append(Code.Literal(operation.ComputedColumnSql));
                 }
                 else if (operation.DefaultValue != null)
                 {
@@ -463,6 +523,14 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                         .AppendLine(",")
                         .Append("defaultValue: ")
                         .Append(Code.UnknownLiteral(operation.DefaultValue));
+                }
+
+                if (operation.Comment != null)
+                {
+                    builder
+                        .AppendLine(",")
+                        .Append("comment: ")
+                        .Append(Code.Literal(operation.Comment));
                 }
 
                 if (operation.OldColumn.ClrType != null)
@@ -485,6 +553,13 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                     builder
                         .AppendLine(",")
                         .Append("oldUnicode: false");
+                }
+
+                if (operation.OldColumn.IsFixedLength == true)
+                {
+                    builder
+                        .AppendLine(",")
+                        .Append("oldFixedLength: true");
                 }
 
                 if (operation.OldColumn.MaxLength.HasValue)
@@ -519,7 +594,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                     builder
                         .AppendLine(",")
                         .Append("oldComputedColumnSql: ")
-                        .Append(Code.UnknownLiteral(operation.OldColumn.ComputedColumnSql));
+                        .Append(Code.Literal(operation.OldColumn.ComputedColumnSql));
                 }
                 else if (operation.OldColumn.DefaultValue != null)
                 {
@@ -527,6 +602,14 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                         .AppendLine(",")
                         .Append("oldDefaultValue: ")
                         .Append(Code.UnknownLiteral(operation.OldColumn.DefaultValue));
+                }
+
+                if (operation.OldColumn.Comment != null)
+                {
+                    builder
+                        .AppendLine(",")
+                        .Append("oldComment: ")
+                        .Append(Code.Literal(operation.OldColumn.Comment));
                 }
 
                 builder.Append(")");
@@ -674,6 +757,22 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                         .AppendLine(",")
                         .Append("schema: ")
                         .Append(Code.Literal(operation.Schema));
+                }
+
+                if (operation.Comment != null)
+                {
+                    builder
+                        .AppendLine(",")
+                        .Append("comment: ")
+                        .Append(Code.Literal(operation.Comment));
+                }
+
+                if (operation.OldTable.Comment != null)
+                {
+                    builder
+                        .AppendLine(",")
+                        .Append("oldComment: ")
+                        .Append(Code.Literal(operation.OldTable.Comment));
                 }
 
                 builder.Append(")");
@@ -921,6 +1020,11 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                             builder.Append("unicode: false, ");
                         }
 
+                        if (column.IsFixedLength == true)
+                        {
+                            builder.Append("fixedLength: true, ");
+                        }
+
                         if (column.MaxLength.HasValue)
                         {
                             builder
@@ -954,6 +1058,13 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                             builder
                                 .Append(", defaultValue: ")
                                 .Append(Code.UnknownLiteral(column.DefaultValue));
+                        }
+
+                        if (column.Comment != null)
+                        {
+                            builder
+                                .Append(", comment: ")
+                                .Append(Code.Literal(column.Comment));
                         }
 
                         builder.Append(")");
@@ -1008,6 +1119,23 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                         using (builder.Indent())
                         {
                             Annotations(uniqueConstraint.GetAnnotations(), builder);
+                        }
+
+                        builder.AppendLine(";");
+                    }
+
+                    foreach (var checkConstraints in operation.CheckConstraints)
+                    {
+                        builder
+                            .Append("table.CheckConstraint(")
+                            .Append(Code.Literal(checkConstraints.Name))
+                            .Append(", ")
+                            .Append(Code.Literal(checkConstraints.Sql))
+                            .Append(")");
+
+                        using (builder.Indent())
+                        {
+                            Annotations(checkConstraints.GetAnnotations(), builder);
                         }
 
                         builder.AppendLine(";");
@@ -1081,7 +1209,17 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                     }
                 }
 
-                builder.Append("})");
+                builder.Append("}");
+
+                if (operation.Comment != null)
+                {
+                    builder
+                        .AppendLine(",")
+                        .Append("comment: ")
+                        .Append(Code.Literal(operation.Comment));
+                }
+
+                builder.Append(")");
 
                 Annotations(operation.GetAnnotations(), builder);
             }
@@ -1355,6 +1493,42 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
         }
 
         /// <summary>
+        ///     Generates code for a <see cref="DropCheckConstraintOperation" />.
+        /// </summary>
+        /// <param name="operation"> The operation. </param>
+        /// <param name="builder"> The builder code is added to. </param>
+        protected virtual void Generate([NotNull] DropCheckConstraintOperation operation, [NotNull] IndentedStringBuilder builder)
+        {
+            Check.NotNull(operation, nameof(operation));
+            Check.NotNull(builder, nameof(builder));
+
+            builder.AppendLine(".DropCheckConstraint(");
+
+            using (builder.Indent())
+            {
+                builder
+                    .Append("name: ")
+                    .Append(Code.Literal(operation.Name));
+
+                if (operation.Schema != null)
+                {
+                    builder
+                        .AppendLine(",")
+                        .Append("schema: ")
+                        .Append(Code.Literal(operation.Schema));
+                }
+
+                builder
+                    .AppendLine(",")
+                    .Append("table: ")
+                    .Append(Code.Literal(operation.Table))
+                    .Append(")");
+
+                Annotations(operation.GetAnnotations(), builder);
+            }
+        }
+
+        /// <summary>
         ///     Generates code for a <see cref="RenameColumnOperation" />.
         /// </summary>
         /// <param name="operation"> The operation. </param>
@@ -1553,6 +1727,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
                         .Append("schema: ")
                         .Append(Code.Literal(operation.Schema));
                 }
+
                 builder
                     .AppendLine(",")
                     .Append("startValue: ")
@@ -1879,6 +2054,11 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
 
             foreach (var annotation in annotations)
             {
+                if (annotation.Value == null)
+                {
+                    continue;
+                }
+
                 // TODO: Give providers an opportunity to render these as provider-specific extension methods
                 builder
                     .AppendLine()
@@ -1917,7 +2097,7 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Design
 
         private static object[] ToOnedimensionalArray(object[,] values, bool firstDimension = false)
         {
-            Debug.Assert(
+            Check.DebugAssert(
                 values.GetLength(firstDimension ? 1 : 0) == 1,
                 $"Length of dimension {(firstDimension ? 1 : 0)} is not 1.");
 

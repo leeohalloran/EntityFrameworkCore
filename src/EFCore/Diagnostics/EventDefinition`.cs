@@ -19,18 +19,24 @@ namespace Microsoft.EntityFrameworkCore.Diagnostics
         /// <summary>
         ///     Creates an event definition instance.
         /// </summary>
+        /// <param name="loggingOptions"> Logging options. </param>
         /// <param name="eventId"> The <see cref="EventId" />. </param>
-        /// <param name="level"> The <see cref="Microsoft.Extensions.Logging.LogLevel" /> at which the event will be logged. </param>
-        /// <param name="logAction"> A cached delegate for logging the event. </param>
+        /// <param name="level"> The <see cref="LogLevel" /> at which the event will be logged. </param>
+        /// <param name="logActionFunc"> Function to create a cached delegate for logging the event. </param>
+        /// <param name="eventIdCode">
+        ///     A string representing the code that should be passed to <see cref="DbContextOptionsBuilder.ConfigureWarnings" />.
+        /// </param>
         public EventDefinition(
+            [NotNull] ILoggingOptions loggingOptions,
             EventId eventId,
             LogLevel level,
-            [NotNull] Action<ILogger, TParam, Exception> logAction)
-            : base(eventId, level)
+            [NotNull] string eventIdCode,
+            [NotNull] Func<LogLevel, Action<ILogger, TParam, Exception>> logActionFunc)
+            : base(loggingOptions, eventId, level, eventIdCode)
         {
-            Check.NotNull(logAction, nameof(logAction));
+            Check.NotNull(logActionFunc, nameof(logActionFunc));
 
-            _logAction = logAction;
+            _logAction = logActionFunc(Level);
         }
 
         /// <summary>
@@ -38,14 +44,12 @@ namespace Microsoft.EntityFrameworkCore.Diagnostics
         ///     Typically used for throwing an exception in warning-as-error cases.
         /// </summary>
         /// <param name="arg"> The message argument. </param>
-        /// <param name="exception"> Optional exception associated with this event. </param>
         /// <returns> The message string. </returns>
         public virtual string GenerateMessage(
-            [CanBeNull] TParam arg,
-            [CanBeNull] Exception exception = null)
+            [CanBeNull] TParam arg)
         {
             var extractor = new MessageExtractingLogger();
-            _logAction(extractor, arg, exception);
+            _logAction(extractor, arg, null);
             return extractor.Message;
         }
 
@@ -55,20 +59,18 @@ namespace Microsoft.EntityFrameworkCore.Diagnostics
         /// <typeparam name="TLoggerCategory"> The <see cref="DbLoggerCategory" />. </typeparam>
         /// <param name="logger"> The logger to which the event should be logged. </param>
         /// <param name="arg"> Message argument. </param>
-        /// <param name="exception"> Optional exception associated with the event. </param>
         public virtual void Log<TLoggerCategory>(
             [NotNull] IDiagnosticsLogger<TLoggerCategory> logger,
-            [CanBeNull] TParam arg,
-            [CanBeNull] Exception exception = null)
+            [CanBeNull] TParam arg)
             where TLoggerCategory : LoggerCategory<TLoggerCategory>, new()
         {
-            switch (logger.GetLogBehavior(EventId, Level))
+            switch (WarningBehavior)
             {
                 case WarningBehavior.Log:
-                    _logAction(logger.Logger, arg, exception);
+                    _logAction(logger.Logger, arg, null);
                     break;
                 case WarningBehavior.Throw:
-                    throw WarningAsError(GenerateMessage(arg, exception));
+                    throw WarningAsError(GenerateMessage(arg));
             }
         }
     }

@@ -25,17 +25,25 @@ namespace Microsoft.EntityFrameworkCore.Storage
         public ULongTypeMapping(
             [NotNull] string storeType,
             DbType? dbType = null)
-            : base(storeType, typeof(ulong), dbType, unicode: false, size: null)
+            : base(storeType, typeof(ulong), dbType)
+        {
+        }
+
+        /// <summary>
+        ///     Initializes a new instance of the <see cref="ULongTypeMapping" /> class.
+        /// </summary>
+        /// <param name="parameters"> Parameter object for <see cref="RelationalTypeMapping" />. </param>
+        protected ULongTypeMapping(RelationalTypeMappingParameters parameters)
+            : base(parameters)
         {
         }
 
         /// <summary>
         ///     Creates a copy of this mapping.
         /// </summary>
-        /// <param name="storeType"> The name of the database type. </param>
-        /// <param name="size"> The size of data the property is configured to store, or null if no size is configured. </param>
+        /// <param name="parameters"> The parameters for this mapping. </param>
         /// <returns> The newly created mapping. </returns>
-        public override RelationalTypeMapping Clone(string storeType, int? size)
-            => new ULongTypeMapping(storeType, DbType);
+        protected override RelationalTypeMapping Clone(RelationalTypeMappingParameters parameters)
+            => new ULongTypeMapping(parameters);
     }
 }

@@ -2,8 +2,10 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using JetBrains.Annotations;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Utilities;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.EntityFrameworkCore.Update
 {
@@ -23,6 +25,12 @@ namespace Microsoft.EntityFrameworkCore.Update
     ///         first resolve the object from the dependency injection container, then replace selected
     ///         services using the 'With...' methods. Do not call the constructor at any point in this process.
     ///     </para>
+    ///     <para>
+    ///         The service lifetime is <see cref="ServiceLifetime.Singleton" />.
+    ///         This means a single instance of each service is used by many <see cref="DbContext" /> instances.
+    ///         The implementation must be thread-safe.
+    ///         This service cannot depend on services registered as <see cref="ServiceLifetime.Scoped" />.
+    ///     </para>
     /// </summary>
     public sealed class UpdateSqlGeneratorDependencies
     {
@@ -39,16 +47,28 @@ namespace Microsoft.EntityFrameworkCore.Update
         ///         the constructor at any point in this process.
         ///     </para>
         ///     <para>
-        ///         This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///         directly from your code. This API may change or be removed in future releases.
+        ///         This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///         the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///         any release. You should only use it directly in your code with extreme caution and knowing that
+        ///         doing so can result in application failures when updating to a new Entity Framework Core release.
+        ///     </para>
+        ///     <para>
+        ///         This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///         the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///         any release. You should only use it directly in your code with extreme caution and knowing that
+        ///         doing so can result in application failures when updating to a new Entity Framework Core release.
         ///     </para>
         /// </summary>
-        /// <param name="sqlGenerationHelper"> Helpers for generating update SQL. </param>
-        public UpdateSqlGeneratorDependencies([NotNull] ISqlGenerationHelper sqlGenerationHelper)
+        [EntityFrameworkInternal]
+        public UpdateSqlGeneratorDependencies(
+            [NotNull] ISqlGenerationHelper sqlGenerationHelper,
+            [NotNull] IRelationalTypeMappingSource typeMappingSource)
         {
             Check.NotNull(sqlGenerationHelper, nameof(sqlGenerationHelper));
+            Check.NotNull(typeMappingSource, nameof(typeMappingSource));
 
             SqlGenerationHelper = sqlGenerationHelper;
+            TypeMappingSource = typeMappingSource;
         }
 
         /// <summary>
@@ -57,11 +77,28 @@ namespace Microsoft.EntityFrameworkCore.Update
         public ISqlGenerationHelper SqlGenerationHelper { get; }
 
         /// <summary>
+        ///     The type mapping source.
+        /// </summary>
+        public IRelationalTypeMappingSource TypeMappingSource { get; }
+
+        /// <summary>
         ///     Clones this dependency parameter object with one service replaced.
         /// </summary>
         /// <param name="sqlGenerationHelper"> A replacement for the current dependency of this type. </param>
         /// <returns> A new parameter object with the given service replaced. </returns>
         public UpdateSqlGeneratorDependencies With([NotNull] ISqlGenerationHelper sqlGenerationHelper)
-            => new UpdateSqlGeneratorDependencies(sqlGenerationHelper);
+            => new UpdateSqlGeneratorDependencies(
+                sqlGenerationHelper,
+                TypeMappingSource);
+
+        /// <summary>
+        ///     Clones this dependency parameter object with one service replaced.
+        /// </summary>
+        /// <param name="typeMappingSource"> A replacement for the current dependency of this type. </param>
+        /// <returns> A new parameter object with the given service replaced. </returns>
+        public UpdateSqlGeneratorDependencies With([NotNull] IRelationalTypeMappingSource typeMappingSource)
+            => new UpdateSqlGeneratorDependencies(
+                SqlGenerationHelper,
+                typeMappingSource);
     }
 }

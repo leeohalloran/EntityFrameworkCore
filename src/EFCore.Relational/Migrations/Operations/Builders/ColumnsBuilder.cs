@@ -1,6 +1,7 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System.ComponentModel;
 using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.Utilities;
 
@@ -38,10 +39,12 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Operations.Builders
         /// <param name="maxLength"> The maximum length for data in the column. </param>
         /// <param name="rowVersion"> Indicates whether or not the column will act as a rowversion/timestamp concurrency token. </param>
         /// <param name="name"> The column name. </param>
-        /// <param name="nullable"> Indicates whether or not th column can store <c>NULL</c> values. </param>
+        /// <param name="nullable"> Indicates whether or not the column can store <c>NULL</c> values. </param>
         /// <param name="defaultValue"> The default value for the column. </param>
         /// <param name="defaultValueSql"> The SQL expression to use for the column's default constraint. </param>
         /// <param name="computedColumnSql"> The SQL expression to use to compute the column value. </param>
+        /// <param name="fixedLength"> Indicates whether or not the column is constrained to fixed-length data. </param>
+        /// <param name="comment"> A comment to be applied to the table. </param>
         /// <returns> The same builder so that multiple calls can be chained. </returns>
         public virtual OperationBuilder<AddColumnOperation> Column<T>(
             [CanBeNull] string type = null,
@@ -52,7 +55,9 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Operations.Builders
             bool nullable = false,
             [CanBeNull] object defaultValue = null,
             [CanBeNull] string defaultValueSql = null,
-            [CanBeNull] string computedColumnSql = null)
+            [CanBeNull] string computedColumnSql = null,
+            bool? fixedLength = null,
+            [CanBeNull] string comment = null)
         {
             var operation = new AddColumnOperation
             {
@@ -67,11 +72,39 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Operations.Builders
                 IsNullable = nullable,
                 DefaultValue = defaultValue,
                 DefaultValueSql = defaultValueSql,
-                ComputedColumnSql = computedColumnSql
+                ComputedColumnSql = computedColumnSql,
+                IsFixedLength = fixedLength,
+                Comment = comment
             };
             _createTableOperation.Columns.Add(operation);
 
             return new OperationBuilder<AddColumnOperation>(operation);
         }
+
+        #region Hidden System.Object members
+
+        /// <summary>
+        ///     Returns a string that represents the current object.
+        /// </summary>
+        /// <returns> A string that represents the current object. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override string ToString() => base.ToString();
+
+        /// <summary>
+        ///     Determines whether the specified object is equal to the current object.
+        /// </summary>
+        /// <param name="obj"> The object to compare with the current object. </param>
+        /// <returns> true if the specified object is equal to the current object; otherwise, false. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override bool Equals(object obj) => base.Equals(obj);
+
+        /// <summary>
+        ///     Serves as the default hash function.
+        /// </summary>
+        /// <returns> A hash code for the current object. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override int GetHashCode() => base.GetHashCode();
+
+        #endregion
     }
 }

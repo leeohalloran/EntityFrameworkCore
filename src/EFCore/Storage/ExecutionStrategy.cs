@@ -5,9 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Transactions;
 using JetBrains.Annotations;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Utilities;
 
 namespace Microsoft.EntityFrameworkCore.Storage
@@ -74,6 +75,7 @@ namespace Microsoft.EntityFrameworkCore.Storage
             {
                 throw new ArgumentOutOfRangeException(nameof(maxRetryCount));
             }
+
             if (maxRetryDelay.TotalMilliseconds < 0.0)
             {
                 throw new ArgumentOutOfRangeException(nameof(maxRetryDelay));
@@ -149,7 +151,7 @@ namespace Microsoft.EntityFrameworkCore.Storage
 
             if (Suspended)
             {
-                return operation(Dependencies.CurrentDbContext.Context, state);
+                return operation(Dependencies.CurrentContext.Context, state);
             }
 
             OnFirstExecution();
@@ -168,7 +170,7 @@ namespace Microsoft.EntityFrameworkCore.Storage
                 try
                 {
                     Suspended = true;
-                    var result = operation(Dependencies.CurrentDbContext.Context, state);
+                    var result = operation(Dependencies.CurrentContext.Context, state);
                     Suspended = false;
                     return result;
                 }
@@ -198,13 +200,13 @@ namespace Microsoft.EntityFrameworkCore.Storage
                         throw new RetryLimitExceededException(CoreStrings.RetryLimitExceeded(MaxRetryCount, GetType().Name), ex);
                     }
 
+                    Dependencies.Logger.ExecutionStrategyRetrying(ExceptionsEncountered, delay.Value, async: true);
+
                     OnRetry();
                 }
 
-                using (var waitEvent = new ManualResetEventSlim(false))
-                {
-                    waitEvent.WaitHandle.WaitOne(delay.Value);
-                }
+                using var waitEvent = new ManualResetEventSlim(false);
+                waitEvent.WaitHandle.WaitOne(delay.Value);
             }
         }
 
@@ -234,13 +236,13 @@ namespace Microsoft.EntityFrameworkCore.Storage
             TState state,
             Func<DbContext, TState, CancellationToken, Task<TResult>> operation,
             Func<DbContext, TState, CancellationToken, Task<ExecutionResult<TResult>>> verifySucceeded,
-            CancellationToken cancellationToken = default(CancellationToken))
+            CancellationToken cancellationToken = default)
         {
             Check.NotNull(operation, nameof(operation));
 
             if (Suspended)
             {
-                return operation(Dependencies.CurrentDbContext.Context, state, cancellationToken);
+                return operation(Dependencies.CurrentContext.Context, state, cancellationToken);
             }
 
             OnFirstExecution();
@@ -261,7 +263,7 @@ namespace Microsoft.EntityFrameworkCore.Storage
                 try
                 {
                     Suspended = true;
-                    var result = await operation(Dependencies.CurrentDbContext.Context, state, cancellationToken);
+                    var result = await operation(Dependencies.CurrentContext.Context, state, cancellationToken);
                     Suspended = false;
                     return result;
                 }
@@ -291,6 +293,8 @@ namespace Microsoft.EntityFrameworkCore.Storage
                         throw new RetryLimitExceededException(CoreStrings.RetryLimitExceeded(MaxRetryCount, GetType().Name), ex);
                     }
 
+                    Dependencies.Logger.ExecutionStrategyRetrying(ExceptionsEncountered, delay.Value, async: true);
+
                     OnRetry();
                 }
 
@@ -303,12 +307,19 @@ namespace Microsoft.EntityFrameworkCore.Storage
         /// </summary>
         protected virtual void OnFirstExecution()
         {
-            if (Dependencies.CurrentDbContext.Context.Database.CurrentTransaction != null)
+            if (Dependencies.CurrentContext.Context.Database.CurrentTransaction != null
+                || Dependencies.CurrentContext.Context.Database.GetEnlistedTransaction() != null
+                || Transaction.Current != null)
             {
                 throw new InvalidOperationException(
                     CoreStrings.ExecutionStrategyExistingTransaction(
                         GetType().Name,
-                        nameof(DbContext) + "." + nameof(DbContext.Database) + "." + nameof(DatabaseFacade.CreateExecutionStrategy) + "()"));
+                        nameof(DbContext)
+                        + "."
+                        + nameof(DbContext.Database)
+                        + "."
+                        + nameof(DatabaseFacade.CreateExecutionStrategy)
+                        + "()"));
             }
 
             ExceptionsEncountered.Clear();
@@ -335,7 +346,7 @@ namespace Microsoft.EntityFrameworkCore.Storage
             if (currentRetryCount < MaxRetryCount)
             {
                 var delta = (Math.Pow(DefaultExponentialBase, currentRetryCount) - 1.0)
-                            * (1.0 + Random.NextDouble() * (DefaultRandomFactor - 1.0));
+                    * (1.0 + Random.NextDouble() * (DefaultRandomFactor - 1.0));
 
                 var delay = Math.Min(
                     _defaultCoefficient.TotalMilliseconds * delta,
@@ -378,11 +389,8 @@ namespace Microsoft.EntityFrameworkCore.Storage
         /// </returns>
         public static TResult CallOnWrappedException<TResult>(
             [NotNull] Exception exception, [NotNull] Func<Exception, TResult> exceptionHandler)
-        {
-            var dbUpdateException = exception as DbUpdateException;
-            return dbUpdateException != null
+            => exception is DbUpdateException dbUpdateException
                 ? CallOnWrappedException(dbUpdateException.InnerException, exceptionHandler)
                 : exceptionHandler(exception);
-        }
     }
 }

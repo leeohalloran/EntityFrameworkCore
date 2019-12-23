@@ -7,7 +7,7 @@ namespace Microsoft.EntityFrameworkCore
 {
     /// <summary>
     ///     <para>
-    ///         An API for getting logger categories inan Intellisense/tab-completion friedly manner.
+    ///         An API for getting logger categories in an Intellisense/tab-completion friendly manner.
     ///     </para>
     ///     <para>
     ///         Get an Entity Framework Core logger category using its Name property. For example,
@@ -55,7 +55,7 @@ namespace Microsoft.EntityFrameworkCore
         /// <summary>
         ///     Logger category for messages related to <see cref="DbContext.SaveChanges()" />, excluding
         ///     messages specifically relating to database interactions which are covered by
-        ///     the <see cref="DbLoggerCategory.Database" /> categories.
+        ///     the <see cref="Database" /> categories.
         /// </summary>
         public class Update : LoggerCategory<Update>
         {
@@ -100,6 +100,13 @@ namespace Microsoft.EntityFrameworkCore
         ///     Logger category messages from Migrations.
         /// </summary>
         public class Migrations : LoggerCategory<Migrations>
+        {
+        }
+
+        /// <summary>
+        ///     Logger category for messages from change detection and tracking.
+        /// </summary>
+        public class ChangeTracking : LoggerCategory<ChangeTracking>
         {
         }
     }

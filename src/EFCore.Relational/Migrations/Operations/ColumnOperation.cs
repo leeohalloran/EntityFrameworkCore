@@ -29,6 +29,11 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Operations
         public virtual bool? IsUnicode { get; set; }
 
         /// <summary>
+        ///     Indicates whether or not the column is constrained to fixed-length data.
+        /// </summary>
+        public virtual bool? IsFixedLength { get; set; }
+
+        /// <summary>
         ///     The maximum amount of data that the column can store, or <c>null</c> if this is not specified or does
         ///     not apply to this column type.
         /// </summary>
@@ -62,5 +67,10 @@ namespace Microsoft.EntityFrameworkCore.Migrations.Operations
         ///     is not computed.
         /// </summary>
         public virtual string ComputedColumnSql { get; [param: CanBeNull] set; }
+
+        /// <summary>
+        ///     Comment for this column
+        /// </summary>
+        public virtual string Comment { get; [param: CanBeNull] set; }
     }
 }

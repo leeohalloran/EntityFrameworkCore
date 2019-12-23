@@ -8,11 +8,14 @@ using System.Data.Common;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using JetBrains.Annotations;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Storage.Internal;
 using Microsoft.EntityFrameworkCore.Utilities;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.EntityFrameworkCore.Storage
 {
@@ -30,31 +33,28 @@ namespace Microsoft.EntityFrameworkCore.Storage
     ///         This type is typically used by database providers (and other extensions). It is generally
     ///         not used in application code.
     ///     </para>
+    ///     <para>
+    ///         The service lifetime is <see cref="ServiceLifetime.Singleton" />. This means a single instance
+    ///         is used by many <see cref="DbContext" /> instances. The implementation must be thread-safe.
+    ///         This service cannot depend on services registered as <see cref="ServiceLifetime.Scoped" />.
+    ///     </para>
     /// </summary>
     public class TypedRelationalValueBufferFactoryFactory : IRelationalValueBufferFactoryFactory
     {
-        private static readonly MethodInfo _getFieldValueMethod
-            = typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.GetFieldValue));
+        /// <summary>
+        ///     The parameter representing the DbDataReader in generated expressions.
+        /// </summary>
+        public static readonly ParameterExpression DataReaderParameter
+            = Expression.Parameter(typeof(DbDataReader), "dataReader");
 
-        private static readonly MethodInfo _isDbNullMethod
-            = typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.IsDBNull));
+        private static readonly MethodInfo _getFieldValueMethod =
+            typeof(DbDataReader).GetRuntimeMethod(nameof(DbDataReader.GetFieldValue), new[] { typeof(int) });
 
-        private static readonly IDictionary<Type, MethodInfo> _getXMethods
-            = new Dictionary<Type, MethodInfo>
-            {
-                { typeof(bool), typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.GetBoolean)) },
-                { typeof(byte), typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.GetByte)) },
-                { typeof(char), typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.GetChar)) },
-                { typeof(DateTime), typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.GetDateTime)) },
-                { typeof(decimal), typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.GetDecimal)) },
-                { typeof(double), typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.GetDouble)) },
-                { typeof(float), typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.GetFloat)) },
-                { typeof(Guid), typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.GetGuid)) },
-                { typeof(short), typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.GetInt16)) },
-                { typeof(int), typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.GetInt32)) },
-                { typeof(long), typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.GetInt64)) },
-                { typeof(string), typeof(DbDataReader).GetTypeInfo().GetDeclaredMethod(nameof(DbDataReader.GetString)) }
-            };
+        private static readonly MethodInfo _isDbNullMethod =
+            typeof(DbDataReader).GetRuntimeMethod(nameof(DbDataReader.IsDBNull), new[] { typeof(int) });
+
+        private static readonly MethodInfo _throwReadValueExceptionMethod
+            = typeof(TypedRelationalValueBufferFactoryFactory).GetTypeInfo().GetDeclaredMethod(nameof(ThrowReadValueException));
 
         /// <summary>
         ///     Initializes a new instance of the <see cref="TypedRelationalValueBufferFactoryFactory" /> class.
@@ -72,155 +72,201 @@ namespace Microsoft.EntityFrameworkCore.Storage
         /// </summary>
         protected virtual RelationalValueBufferFactoryDependencies Dependencies { get; }
 
-        private struct CacheKey
+        private readonly struct CacheKey
         {
-            public CacheKey(IReadOnlyList<Type> valueTypes, IReadOnlyList<int> indexMap)
-            {
-                ValueTypes = valueTypes;
-                IndexMap = indexMap;
-            }
+            public CacheKey(IReadOnlyList<TypeMaterializationInfo> materializationInfo)
+                => TypeMaterializationInfo = materializationInfo;
 
-            public IReadOnlyList<Type> ValueTypes { get; }
-            public IReadOnlyList<int> IndexMap { get; }
+            public IReadOnlyList<TypeMaterializationInfo> TypeMaterializationInfo { get; }
 
             public override bool Equals(object obj)
-            {
-                if (ReferenceEquals(null, obj))
-                {
-                    return false;
-                }
-
-                return obj is CacheKey
-                       && Equals((CacheKey)obj);
-            }
+                => obj is CacheKey cacheKey && Equals(cacheKey);
 
             private bool Equals(CacheKey other)
-            {
-                if (!ValueTypes.SequenceEqual(other.ValueTypes))
-                {
-                    return false;
-                }
-
-                if (IndexMap == null)
-                {
-                    return other.IndexMap == null;
-                }
-
-                return other.IndexMap != null
-                       && IndexMap.SequenceEqual(other.IndexMap);
-            }
+                => TypeMaterializationInfo.SequenceEqual(other.TypeMaterializationInfo);
 
             public override int GetHashCode()
             {
-                unchecked
+                var hash = new HashCode();
+                // ReSharper disable once ForCanBeConvertedToForeach
+                for (var i = 0; i < TypeMaterializationInfo.Count; i++)
                 {
-                    return ValueTypes.Aggregate(0, (t, v) => (t * 397) ^ v.GetHashCode())
-                           ^ (IndexMap?.Aggregate(0, (t, v) => (t * 397) ^ v.GetHashCode()) ?? 0);
+                    hash.Add(TypeMaterializationInfo[i]);
                 }
+
+                return hash.ToHashCode();
             }
         }
 
-        private readonly ConcurrentDictionary<CacheKey, Func<DbDataReader, object[]>> _cache
-            = new ConcurrentDictionary<CacheKey, Func<DbDataReader, object[]>>();
+        private readonly ConcurrentDictionary<CacheKey, TypedRelationalValueBufferFactory> _cache
+            = new ConcurrentDictionary<CacheKey, TypedRelationalValueBufferFactory>();
 
         /// <summary>
         ///     Creates a new <see cref="IRelationalValueBufferFactory" />.
         /// </summary>
-        /// <param name="valueTypes">
-        ///     The types of values to be returned from the value buffer.
-        /// </param>
-        /// <param name="indexMap">
-        ///     An ordered list of zero-based indexes to be read from the underlying result set (i.e. the first number in this
-        ///     list is the index of the underlying result set that will be returned when value 0 is requested from the
-        ///     value buffer).
-        /// </param>
-        /// <returns>
-        ///     The newly created <see cref="IRelationalValueBufferFactoryFactory" />.
-        /// </returns>
-        public virtual IRelationalValueBufferFactory Create(
-            IReadOnlyList<Type> valueTypes, IReadOnlyList<int> indexMap)
+        /// <param name="types"> Types and mapping for the values to be read. </param>
+        /// <returns> The newly created <see cref="IRelationalValueBufferFactoryFactory" />. </returns>
+        public virtual IRelationalValueBufferFactory Create(IReadOnlyList<TypeMaterializationInfo> types)
         {
-            Check.NotNull(valueTypes, nameof(valueTypes));
+            Check.NotNull(types, nameof(types));
 
-            return new TypedRelationalValueBufferFactory(
-                Dependencies,
-                _cache.GetOrAdd(
-                    new CacheKey(valueTypes, indexMap),
-                    CreateArrayInitializer));
+            return _cache.GetOrAdd(
+                new CacheKey(types),
+                k => new TypedRelationalValueBufferFactory(
+                    Dependencies,
+                    CreateArrayInitializer(k, Dependencies.CoreOptions.AreDetailedErrorsEnabled)));
         }
 
-        private static Func<DbDataReader, object[]> CreateArrayInitializer(CacheKey cacheKey)
-        {
-            var dataReaderParameter = Expression.Parameter(typeof(DbDataReader), "dataReader");
+        /// <summary>
+        ///     Creates value buffer assignment expressions for the given type information.
+        /// </summary>
+        /// <param name="types"> Types and mapping for the values to be read. </param>
+        /// <returns> The value buffer assignment expressions. </returns>
+        public virtual IReadOnlyList<Expression> CreateAssignmentExpressions([NotNull] IReadOnlyList<TypeMaterializationInfo> types)
+            => Check.NotNull(types, nameof(types))
+                .Select(
+                    (mi, i) =>
+                        CreateGetValueExpression(
+                            DataReaderParameter,
+                            i,
+                            mi,
+                            Dependencies.CoreOptions.AreDetailedErrorsEnabled,
+                            box: false)).ToArray();
 
-            return Expression.Lambda<Func<DbDataReader, object[]>>(
+        private static Func<DbDataReader, object[]> CreateArrayInitializer(CacheKey cacheKey, bool detailedErrorsEnabled)
+            => Expression.Lambda<Func<DbDataReader, object[]>>(
                     Expression.NewArrayInit(
                         typeof(object),
-                        cacheKey.ValueTypes
+                        cacheKey.TypeMaterializationInfo
                             .Select(
-                                (type, i) =>
+                                (mi, i) =>
                                     CreateGetValueExpression(
-                                        dataReaderParameter,
-                                        type,
-                                        Expression.Constant(cacheKey.IndexMap?[i] ?? i)))),
-                    dataReaderParameter)
+                                        DataReaderParameter,
+                                        i,
+                                        mi,
+                                        detailedErrorsEnabled))),
+                    DataReaderParameter)
                 .Compile();
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static TValue ThrowReadValueException<TValue>(
+            Exception exception, object value, IPropertyBase property = null)
+        {
+            var expectedType = typeof(TValue);
+            var actualType = value?.GetType();
+
+            string message;
+
+            if (property != null)
+            {
+                var entityType = property.DeclaringType.DisplayName();
+                var propertyName = property.Name;
+
+                message
+                    = exception is NullReferenceException
+                    || Equals(value, DBNull.Value)
+                        ? CoreStrings.ErrorMaterializingPropertyNullReference(entityType, propertyName, expectedType)
+                        : exception is InvalidCastException
+                            ? CoreStrings.ErrorMaterializingPropertyInvalidCast(entityType, propertyName, expectedType, actualType)
+                            : CoreStrings.ErrorMaterializingProperty(entityType, propertyName);
+            }
+            else
+            {
+                message
+                    = exception is NullReferenceException
+                        ? CoreStrings.ErrorMaterializingValueNullReference(expectedType)
+                        : exception is InvalidCastException
+                            ? CoreStrings.ErrorMaterializingValueInvalidCast(expectedType, actualType)
+                            : CoreStrings.ErrorMaterializingValue;
+            }
+
+            throw new InvalidOperationException(message, exception);
         }
 
         private static Expression CreateGetValueExpression(
-            Expression dataReaderExpression, Type type, Expression indexExpression)
+            Expression dataReaderExpression,
+            int index,
+            TypeMaterializationInfo materializationInfo,
+            bool detailedErrorsEnabled,
+            bool box = true)
         {
-            var underlyingType = type.UnwrapNullableType().UnwrapEnumType();
+            var getMethod = materializationInfo.Mapping.GetDataReaderMethod();
 
-            MethodInfo getMethod;
-            if (!_getXMethods.TryGetValue(underlyingType, out getMethod))
+            index = materializationInfo.Index == -1 ? index : materializationInfo.Index;
+
+            var indexExpression = Expression.Constant(index);
+
+            Expression valueExpression
+                = Expression.Call(
+                    getMethod.DeclaringType != typeof(DbDataReader)
+                        ? Expression.Convert(dataReaderExpression, getMethod.DeclaringType)
+                        : dataReaderExpression,
+                    getMethod,
+                    indexExpression);
+
+            valueExpression = materializationInfo.Mapping.CustomizeDataReaderExpression(valueExpression);
+
+            var converter = materializationInfo.Mapping.Converter;
+
+            if (converter != null)
             {
-                getMethod = _getFieldValueMethod.MakeGenericMethod(underlyingType);
+                if (valueExpression.Type != converter.ProviderClrType)
+                {
+                    valueExpression = Expression.Convert(valueExpression, converter.ProviderClrType);
+                }
+
+                valueExpression = ReplacingExpressionVisitor.Replace(
+                    converter.ConvertFromProviderExpression.Parameters.Single(),
+                    valueExpression,
+                    converter.ConvertFromProviderExpression.Body);
             }
 
-            Expression expression
-                = Expression.Call(dataReaderExpression, getMethod, indexExpression);
-
-            if (expression.Type != type)
+            if (valueExpression.Type != materializationInfo.ModelClrType)
             {
-                expression = Expression.Convert(expression, type);
+                valueExpression = Expression.Convert(valueExpression, materializationInfo.ModelClrType);
             }
 
             var exceptionParameter
-                = Expression.Parameter(typeof(Exception), "e");
+                = Expression.Parameter(typeof(Exception), name: "e");
 
-            var catchBlock
-                = Expression
-                    .Catch(
-                        exceptionParameter,
-                        Expression.Call(
-                            EntityMaterializerSource
-                                .ThrowReadValueExceptionMethod
-                                .MakeGenericMethod(expression.Type),
+            var property = materializationInfo.Property;
+
+            if (detailedErrorsEnabled)
+            {
+                var catchBlock
+                    = Expression
+                        .Catch(
                             exceptionParameter,
                             Expression.Call(
-                                dataReaderExpression,
-                                _getFieldValueMethod.MakeGenericMethod(typeof(object)),
-                                indexExpression),
-                            Expression.Constant(null, typeof(IPropertyBase))));
+                                _throwReadValueExceptionMethod
+                                    .MakeGenericMethod(valueExpression.Type),
+                                exceptionParameter,
+                                Expression.Call(
+                                    dataReaderExpression,
+                                    _getFieldValueMethod.MakeGenericMethod(typeof(object)),
+                                    indexExpression),
+                                Expression.Constant(property, typeof(IPropertyBase))));
 
-            expression = Expression.TryCatch(expression, catchBlock);
-
-            if (expression.Type.GetTypeInfo().IsValueType)
-            {
-                expression = Expression.Convert(expression, typeof(object));
+                valueExpression = Expression.TryCatch(valueExpression, catchBlock);
             }
 
-            if (expression.Type.IsNullableType())
+            if (box && valueExpression.Type.IsValueType)
             {
-                expression
+                valueExpression = Expression.Convert(valueExpression, typeof(object));
+            }
+
+            if (property?.IsNullable != false
+                || property.DeclaringEntityType.BaseType != null
+                || materializationInfo.IsFromLeftOuterJoin != false)
+            {
+                valueExpression
                     = Expression.Condition(
                         Expression.Call(dataReaderExpression, _isDbNullMethod, indexExpression),
-                        Expression.Default(expression.Type),
-                        expression);
+                        Expression.Default(valueExpression.Type),
+                        valueExpression);
             }
 
-            return expression;
+            return valueExpression;
         }
     }
 }

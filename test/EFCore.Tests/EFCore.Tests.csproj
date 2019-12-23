@@ -1,15 +1,17 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <Import Project="..\..\build\common.props" />
-
   <PropertyGroup>
-    <TargetFrameworks>net461;netcoreapp2.0</TargetFrameworks>
-    <TargetFrameworks Condition="'$(OS)' != 'Windows_NT' OR '$(CoreOnly)' == 'True'">netcoreapp2.0</TargetFrameworks>
+    <TargetFramework>$(DefaultNetCoreTargetFramework)</TargetFramework>
     <AssemblyName>Microsoft.EntityFrameworkCore.Tests</AssemblyName>
     <RootNamespace>Microsoft.EntityFrameworkCore</RootNamespace>
+    <CodeAnalysisRuleSet>..\..\EFCore.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
 
   <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PackageVersion</_Parameter1>
+      <_Parameter2>$(PackageVersion)</_Parameter2>
+    </AssemblyAttribute>
     <None Include="..\xunit.runner.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -17,15 +19,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\EFCore.InMemory.FunctionalTests\EFCore.InMemory.FunctionalTests.csproj" />
-    <ProjectReference Include="..\..\src\EFCore.Specification.Tests\EFCore.Specification.Tests.csproj" />
+    <ProjectReference Include="..\EFCore.Specification.Tests\EFCore.Specification.Tests.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="$(TestSdkVersion)" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Service Include="{82a7f48d-3b50-4b1e-b82e-3ada8210c358}" />
     <Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />
   </ItemGroup>
 
@@ -37,23 +34,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Update="ModelBuilderTest\GiantModel.cs">
+    <Compile Update="ModelBuilding\GiantModel.cs">
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>
       <DependentUpon>GiantModel.tt</DependentUpon>
     </Compile>
-  </ItemGroup>
 
-  <ItemGroup>
-    <Service Include="{82a7f48d-3b50-4b1e-b82e-3ada8210c358}" />
-  </ItemGroup>
-
-  <ItemGroup>
     <None Update="ModelBuilding\GiantModel.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
-    </None>
-    <None Update="ModelBuilding\GiantModel.tt">
-      <Generator>TextTemplatingFileGenerator</Generator>
+      <LastGenOutput>GiantModel.cs</LastGenOutput>
     </None>
   </ItemGroup>
 

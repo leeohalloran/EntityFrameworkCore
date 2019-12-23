@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Data.SqlClient;
 using System.Linq;
-using Microsoft.EntityFrameworkCore.Internal;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.TestUtilities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,7 +18,7 @@ namespace Microsoft.EntityFrameworkCore
 {
     public class ConnectionSpecificationTest
     {
-        [Fact]
+        [ConditionalFact]
         public void Can_specify_connection_string_in_OnConfiguring()
         {
             var serviceProvider
@@ -28,32 +28,30 @@ namespace Microsoft.EntityFrameworkCore
 
             using (SqlServerTestStore.GetNorthwindStore())
             {
-                using (var context = serviceProvider.GetRequiredService<StringInOnConfiguringContext>())
-                {
-                    Assert.True(context.Customers.Any());
-                }
+                using var context = serviceProvider.GetRequiredService<StringInOnConfiguringContext>();
+                Assert.True(context.Customers.Any());
             }
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_specify_connection_string_in_OnConfiguring_with_default_service_provider()
         {
             using (SqlServerTestStore.GetNorthwindStore())
             {
-                using (var context = new StringInOnConfiguringContext())
-                {
-                    Assert.True(context.Customers.Any());
-                }
+                using var context = new StringInOnConfiguringContext();
+                Assert.True(context.Customers.Any());
             }
         }
 
         private class StringInOnConfiguringContext : NorthwindContextBase
         {
             protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-                => optionsBuilder.UseSqlServer(SqlServerNorthwindTestStoreFactory.NorthwindConnectionString, b => b.ApplyConfiguration());
+                => optionsBuilder
+                    .EnableServiceProviderCaching(false)
+                    .UseSqlServer(SqlServerNorthwindTestStoreFactory.NorthwindConnectionString, b => b.ApplyConfiguration());
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_specify_connection_in_OnConfiguring()
         {
             var serviceProvider
@@ -63,22 +61,19 @@ namespace Microsoft.EntityFrameworkCore
 
             using (SqlServerTestStore.GetNorthwindStore())
             {
-                using (var context = serviceProvider.GetRequiredService<ConnectionInOnConfiguringContext>())
-                {
-                    Assert.True(context.Customers.Any());
-                }
+                using var context = serviceProvider.GetRequiredService<ConnectionInOnConfiguringContext>();
+                Assert.True(context.Customers.Any());
             }
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_specify_connection_in_OnConfiguring_with_default_service_provider()
         {
             using (SqlServerTestStore.GetNorthwindStore())
             {
-                using (var context = new ConnectionInOnConfiguringContext(new SqlConnection(SqlServerNorthwindTestStoreFactory.NorthwindConnectionString)))
-                {
-                    Assert.True(context.Customers.Any());
-                }
+                using var context = new ConnectionInOnConfiguringContext(
+                    new SqlConnection(SqlServerNorthwindTestStoreFactory.NorthwindConnectionString));
+                Assert.True(context.Customers.Any());
             }
         }
 
@@ -92,7 +87,9 @@ namespace Microsoft.EntityFrameworkCore
             }
 
             protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-                => optionsBuilder.UseSqlServer(_connection, b => b.ApplyConfiguration());
+                => optionsBuilder
+                    .EnableServiceProviderCaching(false)
+                    .UseSqlServer(_connection, b => b.ApplyConfiguration());
 
             public override void Dispose()
             {
@@ -108,41 +105,39 @@ namespace Microsoft.EntityFrameworkCore
                 => optionsBuilder.UseSqlServer("Database=Crunchie", b => b.ApplyConfiguration());
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Throws_if_no_connection_found_in_config_without_UseSqlServer()
         {
             var serviceProvider
                 = new ServiceCollection()
                     .AddDbContext<NoUseSqlServerContext>().BuildServiceProvider();
 
-            using (var context = serviceProvider.GetRequiredService<NoUseSqlServerContext>())
-            {
-                Assert.Equal(
-                    CoreStrings.NoProviderConfigured,
-                    Assert.Throws<InvalidOperationException>(() => context.Customers.Any()).Message);
-            }
+            using var context = serviceProvider.GetRequiredService<NoUseSqlServerContext>();
+            Assert.Equal(
+                CoreStrings.NoProviderConfigured,
+                Assert.Throws<InvalidOperationException>(() => context.Customers.Any()).Message);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Throws_if_no_config_without_UseSqlServer()
         {
             var serviceProvider
                 = new ServiceCollection()
                     .AddDbContext<NoUseSqlServerContext>().BuildServiceProvider();
 
-            using (var context = serviceProvider.GetRequiredService<NoUseSqlServerContext>())
-            {
-                Assert.Equal(
-                    CoreStrings.NoProviderConfigured,
-                    Assert.Throws<InvalidOperationException>(() => context.Customers.Any()).Message);
-            }
+            using var context = serviceProvider.GetRequiredService<NoUseSqlServerContext>();
+            Assert.Equal(
+                CoreStrings.NoProviderConfigured,
+                Assert.Throws<InvalidOperationException>(() => context.Customers.Any()).Message);
         }
 
         private class NoUseSqlServerContext : NorthwindContextBase
         {
+            protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+                => optionsBuilder.EnableServiceProviderCaching(false);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_depend_on_DbContextOptions()
         {
             var serviceProvider
@@ -153,24 +148,20 @@ namespace Microsoft.EntityFrameworkCore
 
             using (SqlServerTestStore.GetNorthwindStore())
             {
-                using (var context = serviceProvider.GetRequiredService<OptionsContext>())
-                {
-                    Assert.True(context.Customers.Any());
-                }
+                using var context = serviceProvider.GetRequiredService<OptionsContext>();
+                Assert.True(context.Customers.Any());
             }
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_depend_on_DbContextOptions_with_default_service_provider()
         {
             using (SqlServerTestStore.GetNorthwindStore())
             {
-                using (var context = new OptionsContext(
+                using var context = new OptionsContext(
                     new DbContextOptions<OptionsContext>(),
-                    new SqlConnection(SqlServerNorthwindTestStoreFactory.NorthwindConnectionString)))
-                {
-                    Assert.True(context.Customers.Any());
-                }
+                    new SqlConnection(SqlServerNorthwindTestStoreFactory.NorthwindConnectionString));
+                Assert.True(context.Customers.Any());
             }
         }
 
@@ -190,7 +181,9 @@ namespace Microsoft.EntityFrameworkCore
             {
                 Assert.Same(_options, optionsBuilder.Options);
 
-                optionsBuilder.UseSqlServer(_connection, b => b.ApplyConfiguration());
+                optionsBuilder
+                    .EnableServiceProviderCaching(false)
+                    .UseSqlServer(_connection, b => b.ApplyConfiguration());
 
                 Assert.NotSame(_options, optionsBuilder.Options);
             }
@@ -202,7 +195,7 @@ namespace Microsoft.EntityFrameworkCore
             }
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_depend_on_non_generic_options_when_only_one_context()
         {
             var serviceProvider
@@ -212,22 +205,18 @@ namespace Microsoft.EntityFrameworkCore
 
             using (SqlServerTestStore.GetNorthwindStore())
             {
-                using (var context = serviceProvider.GetRequiredService<NonGenericOptionsContext>())
-                {
-                    Assert.True(context.Customers.Any());
-                }
+                using var context = serviceProvider.GetRequiredService<NonGenericOptionsContext>();
+                Assert.True(context.Customers.Any());
             }
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_depend_on_non_generic_options_when_only_one_context_with_default_service_provider()
         {
             using (SqlServerTestStore.GetNorthwindStore())
             {
-                using (var context = new NonGenericOptionsContext(new DbContextOptions<DbContext>()))
-                {
-                    Assert.True(context.Customers.Any());
-                }
+                using var context = new NonGenericOptionsContext(new DbContextOptions<DbContext>());
+                Assert.True(context.Customers.Any());
             }
         }
 
@@ -245,41 +234,36 @@ namespace Microsoft.EntityFrameworkCore
             {
                 Assert.Same(_options, optionsBuilder.Options);
 
-                optionsBuilder.UseSqlServer(SqlServerNorthwindTestStoreFactory.NorthwindConnectionString, b => b.ApplyConfiguration());
+                optionsBuilder
+                    .EnableServiceProviderCaching(false)
+                    .UseSqlServer(SqlServerNorthwindTestStoreFactory.NorthwindConnectionString, b => b.ApplyConfiguration());
 
                 Assert.NotSame(_options, optionsBuilder.Options);
             }
         }
 
-        [Theory]
-        [InlineData("MyConnectuonString", "name=MyConnectuonString")]
+        [ConditionalTheory]
+        [InlineData("MyConnectionString", "name=MyConnectionString")]
         [InlineData("ConnectionStrings:DefaultConnection", "name=ConnectionStrings:DefaultConnection")]
         [InlineData("ConnectionStrings:DefaultConnection", " NamE   =   ConnectionStrings:DefaultConnection  ")]
         public void Can_use_AddDbContext_and_get_connection_string_from_config(string key, string connectionString)
         {
             var configBuilder = new ConfigurationBuilder()
                 .AddInMemoryCollection(
-                    new Dictionary<string, string>
-                    {
-                        { key, SqlServerNorthwindTestStoreFactory.NorthwindConnectionString }
-                    });
+                    new Dictionary<string, string> { { key, SqlServerNorthwindTestStoreFactory.NorthwindConnectionString } });
 
             var serviceProvider
                 = new ServiceCollection()
                     .AddSingleton<IConfiguration>(configBuilder.Build())
                     .AddDbContext<UseConfigurationContext>(
-                        b => b.UseSqlServer(connectionString))
+                        b => b.UseSqlServer(connectionString).EnableServiceProviderCaching(false))
                     .BuildServiceProvider();
 
             using (SqlServerTestStore.GetNorthwindStore())
             {
-                using (var serviceScope = serviceProvider.GetRequiredService<IServiceScopeFactory>().CreateScope())
-                {
-                    using (var context = serviceScope.ServiceProvider.GetRequiredService<UseConfigurationContext>())
-                    {
-                        Assert.True(context.Customers.Any());
-                    }
-                }
+                using var serviceScope = serviceProvider.GetRequiredService<IServiceScopeFactory>().CreateScope();
+                using var context = serviceScope.ServiceProvider.GetRequiredService<UseConfigurationContext>();
+                Assert.True(context.Customers.Any());
             }
         }
 
@@ -308,10 +292,10 @@ namespace Microsoft.EntityFrameworkCore
             {
                 modelBuilder.Entity<Customer>(
                     b =>
-                        {
-                            b.HasKey(c => c.CustomerID);
-                            b.ToTable("Customers");
-                        });
+                    {
+                        b.HasKey(c => c.CustomerID);
+                        b.ToTable("Customers");
+                    });
             }
         }
 

@@ -1,64 +1,69 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Transactions;
 using JetBrains.Annotations;
-using Microsoft.EntityFrameworkCore.Internal;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.EntityFrameworkCore.Update.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     <para>
+    ///         This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///         the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///         any release. You should only use it directly in your code with extreme caution and knowing that
+    ///         doing so can result in application failures when updating to a new Entity Framework Core release.
+    ///     </para>
+    ///     <para>
+    ///         The service lifetime is <see cref="ServiceLifetime.Scoped" />. This means that each
+    ///         <see cref="DbContext" /> instance will use its own instance of this service.
+    ///         The implementation may depend on other services registered with any lifetime.
+    ///         The implementation does not need to be thread-safe.
+    ///     </para>
     /// </summary>
     public class BatchExecutor : IBatchExecutor
     {
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public BatchExecutor([NotNull] ICurrentDbContext currentContext, [NotNull] IExecutionStrategyFactory executionStrategyFactory)
+        public BatchExecutor([NotNull] ICurrentDbContext currentContext)
         {
             CurrentContext = currentContext;
-            ExecutionStrategyFactory = executionStrategyFactory;
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual ICurrentDbContext CurrentContext { get; }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        protected virtual IExecutionStrategyFactory ExecutionStrategyFactory { get; }
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual int Execute(
             IEnumerable<ModificationCommandBatch> commandBatches,
             IRelationalConnection connection)
-            => CurrentContext.Context.Database.AutoTransactionsEnabled
-                ? ExecutionStrategyFactory.Create().Execute(Tuple.Create(commandBatches, connection), Execute)
-                : Execute(Tuple.Create(commandBatches, connection));
-
-        private int Execute(Tuple<IEnumerable<ModificationCommandBatch>, IRelationalConnection> parameters)
         {
-            var commandBatches = parameters.Item1;
-            var connection = parameters.Item2;
             var rowsAffected = 0;
             IDbContextTransaction startedTransaction = null;
             try
             {
                 if (connection.CurrentTransaction == null
+                    && (connection as ITransactionEnlistmentManager)?.EnlistedTransaction == null
+                    && Transaction.Current == null
                     && CurrentContext.Context.Database.AutoTransactionsEnabled)
                 {
                     startedTransaction = connection.BeginTransaction();
@@ -68,10 +73,10 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
                     connection.Open();
                 }
 
-                foreach (var commandbatch in commandBatches)
+                foreach (var batch in commandBatches)
                 {
-                    commandbatch.Execute(connection);
-                    rowsAffected += commandbatch.ModificationCommands.Count;
+                    batch.Execute(connection);
+                    rowsAffected += batch.ModificationCommands.Count;
                 }
 
                 startedTransaction?.Commit();
@@ -92,28 +97,23 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public virtual Task<int> ExecuteAsync(
+        public virtual async Task<int> ExecuteAsync(
             IEnumerable<ModificationCommandBatch> commandBatches,
             IRelationalConnection connection,
-            CancellationToken cancellationToken = default(CancellationToken))
-            => CurrentContext.Context.Database.AutoTransactionsEnabled
-                ? ExecutionStrategyFactory.Create().ExecuteAsync(Tuple.Create(commandBatches, connection), ExecuteAsync, cancellationToken)
-                : ExecuteAsync(Tuple.Create(commandBatches, connection), cancellationToken);
-
-        private async Task<int> ExecuteAsync(
-            Tuple<IEnumerable<ModificationCommandBatch>, IRelationalConnection> parameters,
-            CancellationToken cancellationToken = default(CancellationToken))
+            CancellationToken cancellationToken = default)
         {
-            var commandBatches = parameters.Item1;
-            var connection = parameters.Item2;
             var rowsAffected = 0;
             IDbContextTransaction startedTransaction = null;
             try
             {
                 if (connection.CurrentTransaction == null
+                    && (connection as ITransactionEnlistmentManager)?.EnlistedTransaction == null
+                    && Transaction.Current == null
                     && CurrentContext.Context.Database.AutoTransactionsEnabled)
                 {
                     startedTransaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -123,10 +123,10 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
                     await connection.OpenAsync(cancellationToken);
                 }
 
-                foreach (var commandbatch in commandBatches)
+                foreach (var batch in commandBatches)
                 {
-                    await commandbatch.ExecuteAsync(connection, cancellationToken);
-                    rowsAffected += commandbatch.ModificationCommands.Count;
+                    await batch.ExecuteAsync(connection, cancellationToken);
+                    rowsAffected += batch.ModificationCommands.Count;
                 }
 
                 startedTransaction?.Commit();
@@ -135,11 +135,11 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
             {
                 if (startedTransaction != null)
                 {
-                    startedTransaction.Dispose();
+                    await startedTransaction.DisposeAsync();
                 }
                 else
                 {
-                    connection.Close();
+                    await connection.CloseAsync();
                 }
             }
 

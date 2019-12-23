@@ -1,17 +1,19 @@
-// Copyright (c) .NET Foundation. All rights reserved.
+﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
-using Microsoft.EntityFrameworkCore.Metadata.Conventions.Internal;
-using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
+using Microsoft.EntityFrameworkCore.TestUtilities;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
+// ReSharper disable InconsistentNaming
 namespace Microsoft.EntityFrameworkCore.Metadata.Conventions
 {
     public class ConventionSetBuilderTests
     {
-        [Fact]
+        [ConditionalFact]
         public virtual IModel Can_build_a_model_with_default_conventions_without_DI()
         {
             var modelBuilder = new ModelBuilder(GetConventionSet());
@@ -23,7 +25,11 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Conventions
         }
 
         protected virtual ConventionSet GetConventionSet()
-            => new CoreConventionSetBuilder(new CoreConventionSetBuilderDependencies(new CoreTypeMapper(new CoreTypeMapperDependencies()))).CreateConventionSet();
+        {
+            var contextServices = InMemoryTestHelpers.Instance.CreateContextServices();
+
+            return contextServices.GetRequiredService<IConventionSetBuilder>().CreateConventionSet();
+        }
 
         [Table("ProductTable")]
         protected class Product

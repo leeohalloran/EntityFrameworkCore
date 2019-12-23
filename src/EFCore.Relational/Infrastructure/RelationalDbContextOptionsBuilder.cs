@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.ComponentModel;
 using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Utilities;
@@ -17,7 +18,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
     ///         particular relational database provider.
     ///     </para>
     /// </summary>
-    public abstract class RelationalDbContextOptionsBuilder<TBuilder, TExtension>
+    public abstract class RelationalDbContextOptionsBuilder<TBuilder, TExtension> : IRelationalDbContextOptionsBuilderInfrastructure
         where TBuilder : RelationalDbContextOptionsBuilder<TBuilder, TExtension>
         where TExtension : RelationalOptionsExtension, new()
     {
@@ -37,6 +38,9 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         /// </summary>
         protected virtual DbContextOptionsBuilder OptionsBuilder { get; }
 
+        /// <inheritdoc />
+        DbContextOptionsBuilder IRelationalDbContextOptionsBuilderInfrastructure.OptionsBuilder => OptionsBuilder;
+
         /// <summary>
         ///     Configures the maximum number of statements that will be included in commands sent to the database
         ///     during <see cref="DbContext.SaveChanges()" />.
@@ -45,6 +49,15 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         /// <returns> The same builder instance so that multiple calls can be chained. </returns>
         public virtual TBuilder MaxBatchSize(int maxBatchSize)
             => WithOption(e => (TExtension)e.WithMaxBatchSize(maxBatchSize));
+
+        /// <summary>
+        ///     Configures the minimum number of statements that are needed for a multi-statement command sent to the database
+        ///     during <see cref="DbContext.SaveChanges()" />.
+        /// </summary>
+        /// <param name="minBatchSize"> The minimum number of statements. </param>
+        /// <returns> The same builder instance so that multiple calls can be chained. </returns>
+        public virtual TBuilder MinBatchSize(int minBatchSize)
+            => WithOption(e => (TExtension)e.WithMinBatchSize(minBatchSize));
 
         /// <summary>
         ///     Configures the wait time (in seconds) before terminating the attempt to execute a command and generating an error.
@@ -91,7 +104,8 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         /// <param name="getExecutionStrategy"> A function that returns a new instance of an execution strategy. </param>
         public virtual TBuilder ExecutionStrategy(
             [NotNull] Func<ExecutionStrategyDependencies, IExecutionStrategy> getExecutionStrategy)
-            => WithOption(e => (TExtension)e.WithExecutionStrategyFactory(Check.NotNull(getExecutionStrategy, nameof(getExecutionStrategy))));
+            => WithOption(
+                e => (TExtension)e.WithExecutionStrategyFactory(Check.NotNull(getExecutionStrategy, nameof(getExecutionStrategy))));
 
         /// <summary>
         ///     Sets an option by cloning the extension used to store the settings. This ensures the builder
@@ -106,5 +120,31 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
 
             return (TBuilder)this;
         }
+
+        #region Hidden System.Object members
+
+        /// <summary>
+        ///     Returns a string that represents the current object.
+        /// </summary>
+        /// <returns> A string that represents the current object. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override string ToString() => base.ToString();
+
+        /// <summary>
+        ///     Determines whether the specified object is equal to the current object.
+        /// </summary>
+        /// <param name="obj"> The object to compare with the current object. </param>
+        /// <returns> true if the specified object is equal to the current object; otherwise, false. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override bool Equals(object obj) => base.Equals(obj);
+
+        /// <summary>
+        ///     Serves as the default hash function.
+        /// </summary>
+        /// <returns> A hash code for the current object. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override int GetHashCode() => base.GetHashCode();
+
+        #endregion
     }
 }

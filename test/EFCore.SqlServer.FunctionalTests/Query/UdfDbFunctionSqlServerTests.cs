@@ -1,661 +1,526 @@
 ﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-using System;
-using System.Linq;
-using Microsoft.EntityFrameworkCore.TestModels.Northwind;
 using Microsoft.EntityFrameworkCore.TestUtilities;
-using Xunit;
+using Xunit.Abstractions;
+
+// ReSharper disable InconsistentNaming
 
 namespace Microsoft.EntityFrameworkCore.Query
 {
-    public class UdfDbFunctionSqlServerTests : IClassFixture<NorthwindQuerySqlServerFixture<NoopModelCustomizer>>
+    public class UdfDbFunctionSqlServerTests : UdfDbFunctionTestBase<UdfDbFunctionSqlServerTests.SqlServer>
     {
-        public UdfDbFunctionSqlServerTests(NorthwindQuerySqlServerFixture<NoopModelCustomizer> fixture)
+        public UdfDbFunctionSqlServerTests(SqlServer fixture, ITestOutputHelper testOutputHelper)
+            : base(fixture)
         {
-            Fixture = fixture;
-
             Fixture.TestSqlLoggerFactory.Clear();
+            //Fixture.TestSqlLoggerFactory.SetTestOutputHelper(testOutputHelper);
         }
-
-        protected NorthwindQuerySqlServerFixture<NoopModelCustomizer> Fixture { get; }
-
-        protected NorthwindRelationalContext CreateContext() => Fixture.CreateContext() as NorthwindRelationalContext;
 
         #region Scalar Tests
 
-        private static int AddFive(int number)
+        #region Static
+
+        public override void Scalar_Function_Extension_Method_Static()
         {
-            return number + 5;
+            base.Scalar_Function_Extension_Method_Static();
+
+            AssertSql(
+                @"SELECT COUNT(*)
+FROM [Customers] AS [c]
+WHERE IsDate([c].[FirstName]) = CAST(0 AS bit)");
         }
 
-        [Fact]
-        private void Scalar_Function_Extension_Method()
+        public override void Scalar_Function_With_Translator_Translates_Static()
         {
-            using (var context = CreateContext())
-            {
-                var len = context.Employees.Count(e => NorthwindRelationalContext.IsDate(e.FirstName) == false);
+            base.Scalar_Function_With_Translator_Translates_Static();
 
-                Assert.Equal(9, len);
+            AssertSql(
+                @"@__customerId_0='3'
 
-                AssertSql(
-                    @"SELECT COUNT(*)
-FROM [Employees] AS [e]
-WHERE CASE
-    WHEN IsDate([e].[FirstName]) = 1
-    THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT)
-END = 0");
-            }
+SELECT TOP(2) len([c].[LastName])
+FROM [Customers] AS [c]
+WHERE [c].[Id] = @__customerId_0");
         }
 
-        [Fact]
-        private void Scalar_Function_With_Translator_Translates()
+        public override void Scalar_Function_Constant_Parameter_Static()
         {
-            using (var context = CreateContext())
-            {
-                var employeeId = 5;
+            base.Scalar_Function_Constant_Parameter_Static();
 
-                var len = context.Employees.Where(e => e.EmployeeID == employeeId).Select(e => NorthwindRelationalContext.MyCustomLength(e.FirstName)).Single();
+            AssertSql(
+                @"@__customerId_0='1'
 
-                Assert.Equal(6, len);
-
-                AssertSql(
-                    @"@__employeeId_0='5'
-
-SELECT TOP(2) len([e].[FirstName])
-FROM [Employees] AS [e]
-WHERE [e].[EmployeeID] = @__employeeId_0");
-            }
+SELECT [dbo].[CustomerOrderCount](@__customerId_0)
+FROM [Customers] AS [c]");
         }
 
-        [Fact]
-        public void Scalar_Function_ClientEval_Method_As_Translateable_Method_Parameter()
+        public override void Scalar_Function_Anonymous_Type_Select_Correlated_Static()
         {
-            using (var context = CreateContext())
-            {
-                Assert.Throws<NotImplementedException>(
-                    () => (from e in context.Employees
-                           where e.EmployeeID == 5
-                           select new
-                           {
-                               e.FirstName,
-                               OrderCount = NorthwindRelationalContext.EmployeeOrderCount(AddFive(e.EmployeeID - 5))
-                           }).Single());
-            }
+            base.Scalar_Function_Anonymous_Type_Select_Correlated_Static();
+
+            AssertSql(
+                @"SELECT TOP(2) [c].[LastName], [dbo].[CustomerOrderCount]([c].[Id]) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = 1");
         }
 
-        [Fact]
-        public void Scalar_Function_Constant_Parameter()
+        public override void Scalar_Function_Anonymous_Type_Select_Not_Correlated_Static()
         {
-            using (var context = CreateContext())
-            {
-                var employeeId = 5;
+            base.Scalar_Function_Anonymous_Type_Select_Not_Correlated_Static();
 
-                var emps = context.Employees.Select(e => NorthwindRelationalContext.EmployeeOrderCount(employeeId)).ToList();
-
-                Assert.Equal(9, emps.Count);
-
-                AssertSql(
-                    @"@__employeeId_0='5'
-
-SELECT [dbo].EmployeeOrderCount(@__employeeId_0)
-FROM [Employees] AS [e]");
-            }
+            AssertSql(
+                @"SELECT TOP(2) [c].[LastName], [dbo].[CustomerOrderCount](1) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = 1");
         }
 
-        [Fact]
-        public void Scalar_Function_Anonymous_Type_Select_Correlated()
+        public override void Scalar_Function_Anonymous_Type_Select_Parameter_Static()
         {
-            using (var context = CreateContext())
-            {
-                var emp = (from e in context.Employees
-                           where e.EmployeeID == 5
-                           select new
-                           {
-                               e.FirstName,
-                               OrderCount = NorthwindRelationalContext.EmployeeOrderCount(e.EmployeeID)
-                           }).Single();
+            base.Scalar_Function_Anonymous_Type_Select_Parameter_Static();
 
-                Assert.Equal("Steven", emp.FirstName);
-                Assert.Equal(42, emp.OrderCount);
+            AssertSql(
+                @"@__customerId_0='1'
 
-                AssertSql(
-                    @"SELECT TOP(2) [e].[FirstName], [dbo].EmployeeOrderCount([e].[EmployeeID]) AS [OrderCount]
-FROM [Employees] AS [e]
-WHERE [e].[EmployeeID] = 5");
-            }
+SELECT TOP(2) [c].[LastName], [dbo].[CustomerOrderCount](@__customerId_0) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = @__customerId_0");
         }
 
-        [Fact]
-        public void Scalar_Function_Anonymous_Type_Select_Not_Correlated()
+        public override void Scalar_Function_Anonymous_Type_Select_Nested_Static()
         {
-            using (var context = CreateContext())
-            {
-                var emp = (from e in context.Employees
-                           where e.EmployeeID == 5
-                           select new
-                           {
-                               e.FirstName,
-                               OrderCount = NorthwindRelationalContext.EmployeeOrderCount(5)
-                           }).Single();
+            base.Scalar_Function_Anonymous_Type_Select_Nested_Static();
 
-                Assert.Equal("Steven", emp.FirstName);
-                Assert.Equal(42, emp.OrderCount);
+            AssertSql(
+                @"@__starCount_1='3'
+@__customerId_0='3'
 
-                AssertSql(
-                    @"SELECT TOP(2) [e].[FirstName], [dbo].EmployeeOrderCount(5) AS [OrderCount]
-FROM [Employees] AS [e]
-WHERE [e].[EmployeeID] = 5");
-            }
+SELECT TOP(2) [c].[LastName], [dbo].[StarValue](@__starCount_1, [dbo].[CustomerOrderCount](@__customerId_0)) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = @__customerId_0");
         }
 
-        [Fact]
-        public void Scalar_Function_Anonymous_Type_Select_Parameter()
+        public override void Scalar_Function_Where_Correlated_Static()
         {
-            using (var context = CreateContext())
-            {
-                var employeeId = 5;
+            base.Scalar_Function_Where_Correlated_Static();
 
-                var emp = (from e in context.Employees
-                           where e.EmployeeID == employeeId
-                           select new
-                           {
-                               e.FirstName,
-                               OrderCount = NorthwindRelationalContext.EmployeeOrderCount(employeeId)
-                           }).Single();
-
-                Assert.Equal("Steven", emp.FirstName);
-                Assert.Equal(42, emp.OrderCount);
-
-                AssertSql(
-                    @"@__employeeId_1='5'
-@__employeeId_0='5'
-
-SELECT TOP(2) [e].[FirstName], [dbo].EmployeeOrderCount(@__employeeId_1) AS [OrderCount]
-FROM [Employees] AS [e]
-WHERE [e].[EmployeeID] = @__employeeId_0");
-            }
+            AssertSql(
+                @"SELECT LOWER(CONVERT(VARCHAR(11), [c].[Id]))
+FROM [Customers] AS [c]
+WHERE [dbo].[IsTopCustomer]([c].[Id]) = CAST(1 AS bit)");
         }
 
-        [Fact]
-        public void Scalar_Function_Anonymous_Type_Select_Nested()
+        public override void Scalar_Function_Where_Not_Correlated_Static()
         {
-            using (var context = CreateContext())
-            {
-                var employeeId = 5;
-                var starCount = 3;
+            base.Scalar_Function_Where_Not_Correlated_Static();
 
-                var emp = (from e in context.Employees
-                           where e.EmployeeID == employeeId
-                           select new
-                           {
-                               e.FirstName,
-                               OrderCount = NorthwindRelationalContext.StarValue(starCount, NorthwindRelationalContext.EmployeeOrderCount(employeeId))
-                           }).Single();
+            AssertSql(
+                @"@__startDate_0='2000-04-01T00:00:00' (Nullable = true)
 
-                Assert.Equal("Steven", emp.FirstName);
-                Assert.Equal("***42", emp.OrderCount);
-
-                AssertSql(
-                    @"@__starCount_1='3'
-@__employeeId_2='5'
-@__employeeId_0='5'
-
-SELECT TOP(2) [e].[FirstName], [dbo].StarValue(@__starCount_1, [dbo].EmployeeOrderCount(@__employeeId_2)) AS [OrderCount]
-FROM [Employees] AS [e]
-WHERE [e].[EmployeeID] = @__employeeId_0");
-            }
+SELECT TOP(2) [c].[Id]
+FROM [Customers] AS [c]
+WHERE [dbo].[GetCustomerWithMostOrdersAfterDate](@__startDate_0) = [c].[Id]");
         }
 
-        [Fact]
-        public void Scalar_Function_Where_Correlated()
+        public override void Scalar_Function_Where_Parameter_Static()
         {
-            using (var context = CreateContext())
-            {
-                var emp = (from e in context.Employees
-                           where NorthwindRelationalContext.IsTopEmployee(e.EmployeeID)
-                           select e.EmployeeID.ToString().ToLower()).ToList();
+            base.Scalar_Function_Where_Parameter_Static();
 
-                Assert.Equal(3, emp.Count);
+            AssertSql(
+                @"@__period_0='0'
 
-                AssertSql(
-                    @"SELECT LOWER(CONVERT(VARCHAR(11), [e].[EmployeeID]))
-FROM [Employees] AS [e]
-WHERE [dbo].IsTopEmployee([e].[EmployeeID]) = 1");
-            }
+SELECT TOP(2) [c].[Id]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = [dbo].[GetCustomerWithMostOrdersAfterDate]([dbo].[GetReportingPeriodStartDate](@__period_0))");
         }
 
-        [Fact]
-        public void Scalar_Function_Where_Not_Correlated()
+        public override void Scalar_Function_Where_Nested_Static()
         {
-            using (var context = CreateContext())
-            {
-                var startDate = DateTime.Parse("1/1/1998");
+            base.Scalar_Function_Where_Nested_Static();
 
-                var emp = (from e in context.Employees
-                           where NorthwindRelationalContext.GetEmployeeWithMostOrdersAfterDate(startDate) == e.EmployeeID
-                           select e).SingleOrDefault();
-
-                Assert.NotNull(emp);
-                Assert.True(emp.EmployeeID == 4);
-
-                AssertSql(
-                    @"@__startDate_0='01/01/1998 00:00:00'
-
-SELECT TOP(2) [e].[EmployeeID], [e].[City], [e].[Country], [e].[FirstName], [e].[ReportsTo], [e].[Title]
-FROM [Employees] AS [e]
-WHERE [dbo].GetEmployeeWithMostOrdersAfterDate(@__startDate_0) = [e].[EmployeeID]");
-            }
+            AssertSql(
+                @"SELECT TOP(2) [c].[Id]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = [dbo].[GetCustomerWithMostOrdersAfterDate]([dbo].[GetReportingPeriodStartDate](0))");
         }
 
-        [Fact]
-        public void Scalar_Function_Where_Parameter()
+        public override void Scalar_Function_Let_Correlated_Static()
         {
-            using (var context = CreateContext())
-            {
-                var period = NorthwindRelationalContext.ReportingPeriod.Winter;
+            base.Scalar_Function_Let_Correlated_Static();
 
-                var emp = (from e in context.Employees
-                           where e.EmployeeID == NorthwindRelationalContext.GetEmployeeWithMostOrdersAfterDate(
-                                     NorthwindRelationalContext.GetReportingPeriodStartDate(period))
-                           select e).SingleOrDefault();
-
-                Assert.NotNull(emp);
-                Assert.True(emp.EmployeeID == 4);
-
-                AssertSql(
-                    @"@__period_0='Winter'
-
-SELECT TOP(2) [e].[EmployeeID], [e].[City], [e].[Country], [e].[FirstName], [e].[ReportsTo], [e].[Title]
-FROM [Employees] AS [e]
-WHERE [e].[EmployeeID] = [dbo].GetEmployeeWithMostOrdersAfterDate([dbo].GetReportingPeriodStartDate(@__period_0))");
-            }
+            AssertSql(
+                @"SELECT TOP(2) [c].[LastName], [dbo].[CustomerOrderCount]([c].[Id]) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = 2");
         }
 
-        [Fact]
-        public void Scalar_Function_Where_Nested()
+        public override void Scalar_Function_Let_Not_Correlated_Static()
         {
-            using (var context = CreateContext())
-            {
-                var emp = (from e in context.Employees
-                           where e.EmployeeID == NorthwindRelationalContext.GetEmployeeWithMostOrdersAfterDate(
-                                     NorthwindRelationalContext.GetReportingPeriodStartDate(
-                                         NorthwindRelationalContext.ReportingPeriod.Winter))
-                           select e).SingleOrDefault();
+            base.Scalar_Function_Let_Not_Correlated_Static();
 
-                Assert.NotNull(emp);
-                Assert.True(emp.EmployeeID == 4);
-
-                AssertSql(
-                    @"SELECT TOP(2) [e].[EmployeeID], [e].[City], [e].[Country], [e].[FirstName], [e].[ReportsTo], [e].[Title]
-FROM [Employees] AS [e]
-WHERE [e].[EmployeeID] = [dbo].GetEmployeeWithMostOrdersAfterDate([dbo].GetReportingPeriodStartDate(0))");
-            }
+            AssertSql(
+                @"SELECT TOP(2) [c].[LastName], [dbo].[CustomerOrderCount](2) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = 2");
         }
 
-        [Fact]
-        public void Scalar_Function_Let_Correlated()
+        public override void Scalar_Function_Let_Not_Parameter_Static()
         {
-            using (var context = CreateContext())
-            {
-                var emp = (from e in context.Employees
-                           let orderCount = NorthwindRelationalContext.EmployeeOrderCount(e.EmployeeID)
-                           where e.EmployeeID == 5
-                           select new
-                           {
-                               e.FirstName,
-                               OrderCount = orderCount
-                           }).Single();
+            base.Scalar_Function_Let_Not_Parameter_Static();
 
-                Assert.Equal("Steven", emp.FirstName);
-                Assert.Equal(42, emp.OrderCount);
+            AssertSql(
+                @"@__customerId_0='2'
 
-                AssertSql(
-                    @"SELECT TOP(2) [e].[FirstName], [dbo].EmployeeOrderCount([e].[EmployeeID]) AS [OrderCount]
-FROM [Employees] AS [e]
-WHERE [e].[EmployeeID] = 5");
-            }
+SELECT TOP(2) [c].[LastName], [dbo].[CustomerOrderCount](@__customerId_0) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = @__customerId_0");
         }
 
-        [Fact]
-        public void Scalar_Function_Let_Not_Correlated()
+        public override void Scalar_Function_Let_Nested_Static()
         {
-            using (var context = CreateContext())
-            {
-                var emp = (from e in context.Employees
-                           let orderCount = NorthwindRelationalContext.EmployeeOrderCount(5)
-                           where e.EmployeeID == 5
-                           select new
-                           {
-                               e.FirstName,
-                               OrderCount = orderCount
-                           }).Single();
+            base.Scalar_Function_Let_Nested_Static();
 
-                Assert.Equal("Steven", emp.FirstName);
-                Assert.Equal(42, emp.OrderCount);
+            AssertSql(
+                @"@__starCount_0='3'
+@__customerId_1='1'
 
-                AssertSql(
-                    @"SELECT TOP(2) [e].[FirstName], [dbo].EmployeeOrderCount(5) AS [OrderCount]
-FROM [Employees] AS [e]
-WHERE [e].[EmployeeID] = 5");
-            }
+SELECT TOP(2) [c].[LastName], [dbo].[StarValue](@__starCount_0, [dbo].[CustomerOrderCount](@__customerId_1)) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = @__customerId_1");
         }
 
-        [Fact]
-        public void Scalar_Function_Let_Not_Parameter()
+        public override void Scalar_Nested_Function_Unwind_Client_Eval_Select_Static()
         {
-            var employeeId = 5;
+            base.Scalar_Nested_Function_Unwind_Client_Eval_Select_Static();
 
-            using (var context = CreateContext())
-            {
-                var emp = (from e in context.Employees
-                           let orderCount = NorthwindRelationalContext.EmployeeOrderCount(employeeId)
-                           where e.EmployeeID == employeeId
-                           select new
-                           {
-                               e.FirstName,
-                               OrderCount = orderCount
-                           }).Single();
+            AssertSql(
+                @"SELECT [c].[Id]
+FROM [Customers] AS [c]
+ORDER BY [c].[Id]");
+        }
 
-                Assert.Equal("Steven", emp.FirstName);
-                Assert.Equal(42, emp.OrderCount);
+        public override void Scalar_Nested_Function_UDF_BCL_Static()
+        {
+            base.Scalar_Nested_Function_UDF_BCL_Static();
 
-                AssertSql(
-                    @"@__employeeId_0='5'
-@__employeeId_1='5'
+            AssertSql(
+                @"SELECT TOP(2) [c].[Id]
+FROM [Customers] AS [c]
+WHERE 3 = [dbo].[CustomerOrderCount](ABS([c].[Id]))");
+        }
 
-SELECT TOP(2) [e].[FirstName], [dbo].EmployeeOrderCount(@__employeeId_0) AS [OrderCount]
-FROM [Employees] AS [e]
-WHERE [e].[EmployeeID] = @__employeeId_1");
-            }
+        public override void Nullable_navigation_property_access_preserves_schema_for_sql_function()
+        {
+            base.Nullable_navigation_property_access_preserves_schema_for_sql_function();
+
+            AssertSql(
+                @"SELECT TOP(1) [dbo].[IdentityString]([c].[FirstName])
+FROM [Orders] AS [o]
+LEFT JOIN [Customers] AS [c] ON [o].[CustomerId] = [c].[Id]
+ORDER BY [o].[Id]");
+        }
+
+        public override void Scalar_Function_SqlFragment_Static()
+        {
+            base.Scalar_Function_SqlFragment_Static();
+
+            AssertSql(
+                @"SELECT COUNT(*)
+FROM [Customers] AS [c]
+WHERE [c].[LastName] = 'Two'");
         }
 
         #endregion
 
-        [Fact]
-        public void Scalar_Function_Let_Nested()
+        #region Instance
+
+        public override void Scalar_Function_Non_Static()
         {
-            using (var context = CreateContext())
+            base.Scalar_Function_Non_Static();
+
+            AssertSql(
+                @"SELECT TOP(2) [dbo].[StarValue](4, [c].[Id]) AS [Id], [dbo].[DollarValue](2, [c].[LastName]) AS [LastName]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = 1");
+        }
+
+        public override void Scalar_Function_Extension_Method_Instance()
+        {
+            base.Scalar_Function_Extension_Method_Instance();
+
+            AssertSql(
+                @"SELECT COUNT(*)
+FROM [Customers] AS [c]
+WHERE IsDate([c].[FirstName]) = CAST(0 AS bit)");
+        }
+
+        public override void Scalar_Function_With_Translator_Translates_Instance()
+        {
+            base.Scalar_Function_With_Translator_Translates_Instance();
+
+            AssertSql(
+                @"@__customerId_0='3'
+
+SELECT TOP(2) len([c].[LastName])
+FROM [Customers] AS [c]
+WHERE [c].[Id] = @__customerId_0");
+        }
+
+        public override void Scalar_Function_Constant_Parameter_Instance()
+        {
+            base.Scalar_Function_Constant_Parameter_Instance();
+
+            AssertSql(
+                @"@__customerId_1='1'
+
+SELECT [dbo].[CustomerOrderCount](@__customerId_1)
+FROM [Customers] AS [c]");
+        }
+
+        public override void Scalar_Function_Anonymous_Type_Select_Correlated_Instance()
+        {
+            base.Scalar_Function_Anonymous_Type_Select_Correlated_Instance();
+
+            AssertSql(
+                @"SELECT TOP(2) [c].[LastName], [dbo].[CustomerOrderCount]([c].[Id]) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = 1");
+        }
+
+        public override void Scalar_Function_Anonymous_Type_Select_Not_Correlated_Instance()
+        {
+            base.Scalar_Function_Anonymous_Type_Select_Not_Correlated_Instance();
+
+            AssertSql(
+                @"SELECT TOP(2) [c].[LastName], [dbo].[CustomerOrderCount](1) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = 1");
+        }
+
+        public override void Scalar_Function_Anonymous_Type_Select_Parameter_Instance()
+        {
+            base.Scalar_Function_Anonymous_Type_Select_Parameter_Instance();
+
+            AssertSql(
+                @"@__customerId_0='1'
+
+SELECT TOP(2) [c].[LastName], [dbo].[CustomerOrderCount](@__customerId_0) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = @__customerId_0");
+        }
+
+        public override void Scalar_Function_Anonymous_Type_Select_Nested_Instance()
+        {
+            base.Scalar_Function_Anonymous_Type_Select_Nested_Instance();
+
+            AssertSql(
+                @"@__starCount_2='3'
+@__customerId_0='3'
+
+SELECT TOP(2) [c].[LastName], [dbo].[StarValue](@__starCount_2, [dbo].[CustomerOrderCount](@__customerId_0)) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = @__customerId_0");
+        }
+
+        public override void Scalar_Function_Where_Correlated_Instance()
+        {
+            base.Scalar_Function_Where_Correlated_Instance();
+
+            AssertSql(
+                @"SELECT LOWER(CONVERT(VARCHAR(11), [c].[Id]))
+FROM [Customers] AS [c]
+WHERE [dbo].[IsTopCustomer]([c].[Id]) = CAST(1 AS bit)");
+        }
+
+        public override void Scalar_Function_Where_Not_Correlated_Instance()
+        {
+            base.Scalar_Function_Where_Not_Correlated_Instance();
+
+            AssertSql(
+                @"@__startDate_1='2000-04-01T00:00:00' (Nullable = true)
+
+SELECT TOP(2) [c].[Id]
+FROM [Customers] AS [c]
+WHERE [dbo].[GetCustomerWithMostOrdersAfterDate](@__startDate_1) = [c].[Id]");
+        }
+
+        public override void Scalar_Function_Where_Parameter_Instance()
+        {
+            base.Scalar_Function_Where_Parameter_Instance();
+
+            AssertSql(
+                @"@__period_1='0'
+
+SELECT TOP(2) [c].[Id]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = [dbo].[GetCustomerWithMostOrdersAfterDate]([dbo].[GetReportingPeriodStartDate](@__period_1))");
+        }
+
+        public override void Scalar_Function_Where_Nested_Instance()
+        {
+            base.Scalar_Function_Where_Nested_Instance();
+
+            AssertSql(
+                @"SELECT TOP(2) [c].[Id]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = [dbo].[GetCustomerWithMostOrdersAfterDate]([dbo].[GetReportingPeriodStartDate](0))");
+        }
+
+        public override void Scalar_Function_Let_Correlated_Instance()
+        {
+            base.Scalar_Function_Let_Correlated_Instance();
+
+            AssertSql(
+                @"SELECT TOP(2) [c].[LastName], [dbo].[CustomerOrderCount]([c].[Id]) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = 2");
+        }
+
+        public override void Scalar_Function_Let_Not_Correlated_Instance()
+        {
+            base.Scalar_Function_Let_Not_Correlated_Instance();
+
+            AssertSql(
+                @"SELECT TOP(2) [c].[LastName], [dbo].[CustomerOrderCount](2) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = 2");
+        }
+
+        public override void Scalar_Function_Let_Not_Parameter_Instance()
+        {
+            base.Scalar_Function_Let_Not_Parameter_Instance();
+
+            AssertSql(
+                @"@__customerId_1='2'
+
+SELECT TOP(2) [c].[LastName], [dbo].[CustomerOrderCount](@__customerId_1) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = @__customerId_1");
+        }
+
+        public override void Scalar_Function_Let_Nested_Instance()
+        {
+            base.Scalar_Function_Let_Nested_Instance();
+
+            AssertSql(
+                @"@__starCount_1='3'
+@__customerId_2='1'
+
+SELECT TOP(2) [c].[LastName], [dbo].[StarValue](@__starCount_1, [dbo].[CustomerOrderCount](@__customerId_2)) AS [OrderCount]
+FROM [Customers] AS [c]
+WHERE [c].[Id] = @__customerId_2");
+        }
+
+        public override void Scalar_Nested_Function_Unwind_Client_Eval_Select_Instance()
+        {
+            base.Scalar_Nested_Function_Unwind_Client_Eval_Select_Instance();
+
+            AssertSql(
+                @"SELECT [c].[Id]
+FROM [Customers] AS [c]
+ORDER BY [c].[Id]");
+        }
+
+        public override void Scalar_Nested_Function_BCL_UDF_Instance()
+        {
+            base.Scalar_Nested_Function_BCL_UDF_Instance();
+
+            AssertSql(
+                @"SELECT TOP(2) [c].[Id]
+FROM [Customers] AS [c]
+WHERE 3 = ABS([dbo].[CustomerOrderCount]([c].[Id]))");
+        }
+
+        public override void Scalar_Nested_Function_UDF_BCL_Instance()
+        {
+            base.Scalar_Nested_Function_UDF_BCL_Instance();
+
+            AssertSql(
+                @"SELECT TOP(2) [c].[Id]
+FROM [Customers] AS [c]
+WHERE 3 = [dbo].[CustomerOrderCount](ABS([c].[Id]))");
+        }
+
+        #endregion
+
+        #endregion
+
+        public class SqlServer : UdfFixtureBase
+        {
+            protected override string StoreName { get; } = "UDFDbFunctionSqlServerTests";
+            protected override ITestStoreFactory TestStoreFactory => SqlServerTestStoreFactory.Instance;
+
+            protected override void Seed(DbContext context)
             {
-                var employeeId = 5;
-                var starCount = 3;
+                base.Seed(context);
 
-                var emp = (from e in context.Employees
-                           let orderCount = NorthwindRelationalContext.StarValue(starCount, NorthwindRelationalContext.EmployeeOrderCount(employeeId))
-                           where e.EmployeeID == employeeId
-                           select new
-                           {
-                               e.FirstName,
-                               OrderCount = orderCount
-                           }).Single();
+                context.Database.ExecuteSqlRaw(
+                    @"create function [dbo].[CustomerOrderCount] (@customerId int)
+                                                    returns int
+                                                    as
+                                                    begin
+                                                        return (select count(id) from orders where customerId = @customerId);
+                                                    end");
 
-                Assert.Equal("Steven", emp.FirstName);
-                Assert.Equal("***42", emp.OrderCount);
+                context.Database.ExecuteSqlRaw(
+                    @"create function[dbo].[StarValue] (@starCount int, @value nvarchar(max))
+                                                    returns nvarchar(max)
+                                                        as
+                                                        begin
+                                                    return replicate('*', @starCount) + @value
+                                                    end");
 
-                AssertSql(
-                    @"@__starCount_0='3'
-@__employeeId_1='5'
-@__employeeId_2='5'
+                context.Database.ExecuteSqlRaw(
+                    @"create function[dbo].[DollarValue] (@starCount int, @value nvarchar(max))
+                                                    returns nvarchar(max)
+                                                        as
+                                                        begin
+                                                    return replicate('$', @starCount) + @value
+                                                    end");
 
-SELECT TOP(2) [e].[FirstName], [dbo].StarValue(@__starCount_0, [dbo].EmployeeOrderCount(@__employeeId_1)) AS [OrderCount]
-FROM [Employees] AS [e]
-WHERE [e].[EmployeeID] = @__employeeId_2");
+                context.Database.ExecuteSqlRaw(
+                    @"create function [dbo].[GetReportingPeriodStartDate] (@period int)
+                                                    returns DateTime
+                                                    as
+                                                    begin
+                                                        return '1998-01-01'
+                                                    end");
+
+                context.Database.ExecuteSqlRaw(
+                    @"create function [dbo].[GetCustomerWithMostOrdersAfterDate] (@searchDate Date)
+                                                    returns int
+                                                    as
+                                                    begin
+                                                        return (select top 1 customerId
+                                                                from orders
+                                                                where orderDate > @searchDate
+                                                                group by CustomerId
+                                                                order by count(id) desc)
+                                                    end");
+
+                context.Database.ExecuteSqlRaw(
+                    @"create function [dbo].[IsTopCustomer] (@customerId int)
+                                                    returns bit
+                                                    as
+                                                    begin
+                                                        if(@customerId = 1)
+                                                            return 1
+
+                                                        return 0
+                                                    end");
+
+                context.Database.ExecuteSqlRaw(
+                    @"create function [dbo].[IdentityString] (@customerName nvarchar(max))
+                                                    returns nvarchar(max)
+                                                    as
+                                                    begin
+                                                        return @customerName;
+                                                    end");
+
+                context.SaveChanges();
             }
         }
 
-        public static int AddOne(int num)
-        {
-            return num + 1;
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_Unwind_Client_Eval_Where()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               where 2 == AddOne(e.EmployeeID)
-                               select e.EmployeeID).Single();
-
-                Assert.Equal(1, results);
-                AssertSql(
-                    @"SELECT [e].[EmployeeID]
-FROM [Employees] AS [e]");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested__Function_Unwind_Client_Eval_OrderBy()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               orderby AddOne(e.EmployeeID)
-                               select e.EmployeeID).ToList();
-
-                Assert.Equal(9, results.Count);
-                Assert.True(results.SequenceEqual(Enumerable.Range(1, 9)));
-
-                AssertSql(
-                    @"SELECT [e].[EmployeeID]
-FROM [Employees] AS [e]");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_Unwind_Client_Eval_Select()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               orderby e.EmployeeID
-                               select AddOne(e.EmployeeID)).ToList();
-
-                Assert.Equal(9, results.Count);
-                Assert.True(results.SequenceEqual(Enumerable.Range(2, 9)));
-
-                AssertSql(
-                    @"SELECT [e].[EmployeeID]
-FROM [Employees] AS [e]
-ORDER BY [e].[EmployeeID]");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_Client_BCL_UDF()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               where 128 == AddOne(Math.Abs(NorthwindRelationalContext.EmployeeOrderCountWithClient(e.EmployeeID)))
-                               select e.EmployeeID).Single();
-
-                Assert.Equal(3, results);
-                AssertSql(
-                    @"SELECT [e].[EmployeeID]
-FROM [Employees] AS [e]");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_Client_UDF_BCL()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               where 128 == AddOne(NorthwindRelationalContext.EmployeeOrderCountWithClient(Math.Abs(e.EmployeeID)))
-                               select e.EmployeeID).Single();
-
-                Assert.Equal(3, results);
-                AssertSql(
-                    @"SELECT [e].[EmployeeID]
-FROM [Employees] AS [e]");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_BCL_Client_UDF()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               where 128 == Math.Abs(AddOne(NorthwindRelationalContext.EmployeeOrderCountWithClient(e.EmployeeID)))
-                               select e.EmployeeID).Single();
-
-                Assert.Equal(3, results);
-                AssertSql(
-                    @"SELECT [e].[EmployeeID]
-FROM [Employees] AS [e]");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_BCL_UDF_Client()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               where 127 == Math.Abs(NorthwindRelationalContext.EmployeeOrderCountWithClient(AddOne(e.EmployeeID)))
-                               select e.EmployeeID).Single();
-
-                Assert.Equal(2, results);
-                AssertSql(
-                    @"SELECT [e].[EmployeeID]
-FROM [Employees] AS [e]");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_UDF_BCL_Client()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               where 127 == NorthwindRelationalContext.EmployeeOrderCountWithClient(Math.Abs(AddOne(e.EmployeeID)))
-                               select e.EmployeeID).Single();
-
-                Assert.Equal(2, results);
-                AssertSql(
-                    @"SELECT [e].[EmployeeID]
-FROM [Employees] AS [e]");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_UDF_Client_BCL()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               where 127 == NorthwindRelationalContext.EmployeeOrderCountWithClient(AddOne(Math.Abs(e.EmployeeID)))
-                               select e.EmployeeID).Single();
-
-                Assert.Equal(2, results);
-                AssertSql(
-                    @"SELECT [e].[EmployeeID]
-FROM [Employees] AS [e]");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_Client_BCL()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               where 3 == AddOne(Math.Abs(e.EmployeeID))
-                               select e.EmployeeID).Single();
-
-                Assert.Equal(2, results);
-                AssertSql(
-                    @"SELECT [e].[EmployeeID]
-FROM [Employees] AS [e]");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_Client_UDF()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               where 128 == AddOne(NorthwindRelationalContext.EmployeeOrderCountWithClient(e.EmployeeID))
-                               select e.EmployeeID).Single();
-
-                Assert.Equal(3, results);
-                AssertSql(
-                    @"SELECT [e].[EmployeeID]
-FROM [Employees] AS [e]");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_BCL_Client()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               where 3 == Math.Abs(AddOne(e.EmployeeID))
-                               select e.EmployeeID).Single();
-
-                Assert.Equal(2, results);
-                AssertSql(
-                    @"SELECT [e].[EmployeeID]
-FROM [Employees] AS [e]");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_BCL_UDF()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               where 127 == Math.Abs(NorthwindRelationalContext.EmployeeOrderCountWithClient(e.EmployeeID))
-                               select e.EmployeeID).Single();
-
-                Assert.Equal(3, results);
-                AssertSql(
-                    @"SELECT TOP(2) [e].[EmployeeID]
-FROM [Employees] AS [e]
-WHERE 127 = ABS([dbo].EmployeeOrderCount([e].[EmployeeID]))");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_UDF_Client()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               where 127 == NorthwindRelationalContext.EmployeeOrderCountWithClient(AddOne(e.EmployeeID))
-                               select e.EmployeeID).Single();
-
-                Assert.Equal(2, results);
-                AssertSql(
-                    @"SELECT [e].[EmployeeID]
-FROM [Employees] AS [e]");
-            }
-        }
-
-        [Fact]
-        public void Scalar_Nested_Function_UDF_BCL()
-        {
-            using (var context = CreateContext())
-            {
-                var results = (from e in context.Employees
-                               where 127 == NorthwindRelationalContext.EmployeeOrderCountWithClient(Math.Abs(e.EmployeeID))
-                               select e.EmployeeID).Single();
-
-                Assert.Equal(3, results);
-                AssertSql(
-                    @"SELECT TOP(2) [e].[EmployeeID]
-FROM [Employees] AS [e]
-WHERE 127 = [dbo].EmployeeOrderCount(ABS([e].[EmployeeID]))");
-            }
-        }
-
-        private void AssertSql(params string[] expected)
+        public void AssertSql(params string[] expected)
             => Fixture.TestSqlLoggerFactory.AssertBaseline(expected);
     }
 }

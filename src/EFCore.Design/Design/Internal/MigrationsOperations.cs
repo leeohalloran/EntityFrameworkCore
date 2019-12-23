@@ -18,8 +18,10 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Microsoft.EntityFrameworkCore.Design.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///     any release. You should only use it directly in your code with extreme caution and knowing that
+    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
     public class MigrationsOperations
     {
@@ -27,41 +29,51 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
         private readonly Assembly _assembly;
         private readonly string _projectDir;
         private readonly string _rootNamespace;
+        private readonly string _language;
         private readonly DesignTimeServicesBuilder _servicesBuilder;
         private readonly DbContextOperations _contextOperations;
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public MigrationsOperations(
             [NotNull] IOperationReporter reporter,
             [NotNull] Assembly assembly,
             [NotNull] Assembly startupAssembly,
             [NotNull] string projectDir,
-            [NotNull] string rootNamespace)
+            [NotNull] string rootNamespace,
+            [CanBeNull] string language,
+            [NotNull] string[] args)
         {
             Check.NotNull(reporter, nameof(reporter));
             Check.NotNull(assembly, nameof(assembly));
             Check.NotNull(startupAssembly, nameof(startupAssembly));
             Check.NotNull(projectDir, nameof(projectDir));
             Check.NotNull(rootNamespace, nameof(rootNamespace));
+            Check.NotNull(args, nameof(args));
 
             _reporter = reporter;
             _assembly = assembly;
             _projectDir = projectDir;
             _rootNamespace = rootNamespace;
+            _language = language;
             _contextOperations = new DbContextOperations(
                 reporter,
                 assembly,
-                startupAssembly);
+                startupAssembly,
+                args);
 
-            _servicesBuilder = new DesignTimeServicesBuilder(startupAssembly, reporter);
+            _servicesBuilder = new DesignTimeServicesBuilder(assembly, startupAssembly, reporter, args);
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual MigrationFiles AddMigration(
             [NotNull] string name,
@@ -70,21 +82,23 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
         {
             Check.NotEmpty(name, nameof(name));
 
-            outputDir = string.IsNullOrWhiteSpace(outputDir) ? null : outputDir;
+            if (outputDir != null)
+            {
+                outputDir = Path.GetFullPath(Path.Combine(_projectDir, outputDir));
+            }
+
             var subNamespace = SubnamespaceFromOutputPath(outputDir);
 
-            using (var context = _contextOperations.CreateContext(contextType))
-            {
-                var services = _servicesBuilder.Build(context);
-                EnsureServices(services);
-                EnsureMigrationsAssembly(services);
+            using var context = _contextOperations.CreateContext(contextType);
+            var services = _servicesBuilder.Build(context);
+            EnsureServices(services);
+            EnsureMigrationsAssembly(services);
 
-                var scaffolder = services.GetRequiredService<MigrationsScaffolder>();
-                var migration = scaffolder.ScaffoldMigration(name, _rootNamespace, subNamespace);
-                var files = scaffolder.Save(_projectDir, migration, outputDir);
+            var scaffolder = services.GetRequiredService<IMigrationsScaffolder>();
+            var migration = scaffolder.ScaffoldMigration(name, _rootNamespace, subNamespace, _language);
+            var files = scaffolder.Save(_projectDir, migration, outputDir);
 
-                return files;
-            }
+            return files;
         }
 
         // if outputDir is a subfolder of projectDir, then use each subfolder as a subnamespace
@@ -92,8 +106,7 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
         // => "namespace $(rootnamespace).A.B.C"
         private string SubnamespaceFromOutputPath(string outputDir)
         {
-            if (outputDir == null
-                || !outputDir.StartsWith(_projectDir, StringComparison.Ordinal))
+            if (outputDir?.StartsWith(_projectDir, StringComparison.Ordinal) != true)
             {
                 return null;
             }
@@ -101,33 +114,39 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
             var subPath = outputDir.Substring(_projectDir.Length);
 
             return !string.IsNullOrWhiteSpace(subPath)
-                ? string.Join(".", subPath.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries))
+                ? string.Join(
+                    ".",
+                    subPath.Split(
+                        new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
+                        StringSplitOptions.RemoveEmptyEntries))
                 : null;
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual IEnumerable<MigrationInfo> GetMigrations(
             [CanBeNull] string contextType)
         {
-            using (var context = _contextOperations.CreateContext(contextType))
-            {
-                var services = _servicesBuilder.Build(context);
-                EnsureServices(services);
+            using var context = _contextOperations.CreateContext(contextType);
+            var services = _servicesBuilder.Build(context);
+            EnsureServices(services);
 
-                var migrationsAssembly = services.GetRequiredService<IMigrationsAssembly>();
-                var idGenerator = services.GetRequiredService<IMigrationsIdGenerator>();
+            var migrationsAssembly = services.GetRequiredService<IMigrationsAssembly>();
+            var idGenerator = services.GetRequiredService<IMigrationsIdGenerator>();
 
-                return from id in migrationsAssembly.Migrations.Keys
-                       select new MigrationInfo { Id = id, Name = idGenerator.GetName(id) };
-            }
+            return from id in migrationsAssembly.Migrations.Keys
+                   select new MigrationInfo { Id = id, Name = idGenerator.GetName(id) };
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual string ScriptMigration(
             [CanBeNull] string fromMigration,
@@ -135,20 +154,20 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
             bool idempotent,
             [CanBeNull] string contextType)
         {
-            using (var context = _contextOperations.CreateContext(contextType))
-            {
-                var services = _servicesBuilder.Build(context);
-                EnsureServices(services);
+            using var context = _contextOperations.CreateContext(contextType);
+            var services = _servicesBuilder.Build(context);
+            EnsureServices(services);
 
-                var migrator = services.GetRequiredService<IMigrator>();
+            var migrator = services.GetRequiredService<IMigrator>();
 
-                return migrator.GenerateScript(fromMigration, toMigration, idempotent);
-            }
+            return migrator.GenerateScript(fromMigration, toMigration, idempotent);
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual void UpdateDatabase(
             [CanBeNull] string targetMigration,
@@ -168,29 +187,29 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual MigrationFiles RemoveMigration(
             [CanBeNull] string contextType, bool force)
         {
-            using (var context = _contextOperations.CreateContext(contextType))
-            {
-                var services = _servicesBuilder.Build(context);
-                EnsureServices(services);
-                EnsureMigrationsAssembly(services);
+            using var context = _contextOperations.CreateContext(contextType);
+            var services = _servicesBuilder.Build(context);
+            EnsureServices(services);
+            EnsureMigrationsAssembly(services);
 
-                var scaffolder = services.GetRequiredService<MigrationsScaffolder>();
+            var scaffolder = services.GetRequiredService<IMigrationsScaffolder>();
 
-                var files = scaffolder.RemoveMigration(_projectDir, _rootNamespace, force);
+            var files = scaffolder.RemoveMigration(_projectDir, _rootNamespace, force, _language);
 
-                _reporter.WriteInformation(DesignStrings.Done);
+            _reporter.WriteInformation(DesignStrings.Done);
 
-                return files;
-            }
+            return files;
         }
 
-        private void EnsureServices(IServiceProvider services)
+        private static void EnsureServices(IServiceProvider services)
         {
             var migrator = services.GetService<IMigrator>();
             if (migrator == null)
@@ -206,7 +225,7 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
             var options = services.GetRequiredService<IDbContextOptions>();
             var contextType = services.GetRequiredService<ICurrentDbContext>().Context.GetType();
             var migrationsAssemblyName = RelationalOptionsExtension.Extract(options).MigrationsAssembly
-                                         ?? contextType.GetTypeInfo().Assembly.GetName().Name;
+                                         ?? contextType.Assembly.GetName().Name;
             if (assemblyName.Name != migrationsAssemblyName
                 && assemblyName.FullName != migrationsAssemblyName)
             {

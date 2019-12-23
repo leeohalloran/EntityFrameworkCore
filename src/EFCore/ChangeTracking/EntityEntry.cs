@@ -1,18 +1,19 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.ChangeTracking.Internal;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.EntityFrameworkCore.Utilities;
 
 namespace Microsoft.EntityFrameworkCore.ChangeTracking
@@ -26,21 +27,27 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
     ///         not designed to be directly constructed in your application code.
     ///     </para>
     /// </summary>
-    [DebuggerDisplay("{InternalEntry,nq}")]
+    [DebuggerDisplay("{" + nameof(InternalEntry) + ",nq}")]
     public class EntityEntry : IInfrastructure<InternalEntityEntry>
     {
         private static readonly int _maxEntityState = Enum.GetValues(typeof(EntityState)).Cast<int>().Max();
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        protected virtual InternalEntityEntry InternalEntry { get; }
+        [EntityFrameworkInternal]
+        protected virtual InternalEntityEntry InternalEntry { [DebuggerStepThrough] get; }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
+        [EntityFrameworkInternal]
         public EntityEntry([NotNull] InternalEntityEntry internalEntry)
         {
             Check.NotNull(internalEntry, nameof(internalEntry));
@@ -58,6 +65,10 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
         ///         Gets or sets that state that this entity is being tracked in.
         ///     </para>
         ///     <para>
+        ///         This method sets only the state of the single entity represented by this entry. It does
+        ///         not change the state of other entities reachable from this one.
+        ///     </para>
+        ///     <para>
         ///         When setting the state, the entity will always end up in the specified state. For example, if you
         ///         change the state to <see cref="EntityState.Deleted" /> the entity will be marked for deletion regardless
         ///         of its current state. This is different than calling <see cref="DbSet{TEntity}.Remove(TEntity)" /> where the entity
@@ -66,7 +77,7 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
         /// </summary>
         public virtual EntityState State
         {
-            get { return InternalEntry.EntityState; }
+            get => InternalEntry.EntityState;
             set
             {
                 if (value < 0
@@ -80,9 +91,26 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     Scans this entity instance to detect any changes made to the instance data. <see cref="DetectChanges()" />
+        ///     is usually called automatically by the context to get up-to-date information on an individual entity before
+        ///     returning change tracking information. You typically only need to call this method if you have
+        ///     disabled <see cref="ChangeTracker.AutoDetectChangesEnabled" />.
         /// </summary>
+        public virtual void DetectChanges()
+        {
+            if ((string)Context.Model[ChangeDetector.SkipDetectChangesAnnotation] != "true")
+            {
+                Context.GetDependencies().ChangeDetector.DetectChanges(InternalEntry);
+            }
+        }
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        [EntityFrameworkInternal]
         InternalEntityEntry IInfrastructure<InternalEntityEntry>.Instance => InternalEntry;
 
         /// <summary>
@@ -252,20 +280,26 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
         ///         true since any value is considered a valid key value.
         ///     </para>
         /// </summary>
-        public virtual bool IsKeySet => InternalEntry.IsKeySet;
+        public virtual bool IsKeySet => InternalEntry.IsKeySet.IsSet;
 
         /// <summary>
         ///     Gets the current property values for this entity.
         /// </summary>
         /// <value> The current values. </value>
-        public virtual PropertyValues CurrentValues => new CurrentPropertyValues(InternalEntry);
+        public virtual PropertyValues CurrentValues
+        {
+            [DebuggerStepThrough] get => new CurrentPropertyValues(InternalEntry);
+        }
 
         /// <summary>
         ///     Gets the original property values for this entity. The original values are the property
         ///     values as they were when the entity was retrieved from the database.
         /// </summary>
         /// <value> The original values. </value>
-        public virtual PropertyValues OriginalValues => new OriginalPropertyValues(InternalEntry);
+        public virtual PropertyValues OriginalValues
+        {
+            [DebuggerStepThrough] get => new OriginalPropertyValues(InternalEntry);
+        }
 
         /// <summary>
         ///     <para>
@@ -306,7 +340,7 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
         ///     A task that represents the asynchronous operation. The task result contains the store values,
         ///     or null if the entity does not exist in the database.
         /// </returns>
-        public virtual async Task<PropertyValues> GetDatabaseValuesAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public virtual async Task<PropertyValues> GetDatabaseValuesAsync(CancellationToken cancellationToken = default)
         {
             var values = await Finder.GetDatabaseValuesAsync(InternalEntry, cancellationToken);
 
@@ -345,7 +379,7 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
         /// <returns>
         ///     A task that represents the asynchronous operation.
         /// </returns>
-        public virtual async Task ReloadAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public virtual async Task ReloadAsync(CancellationToken cancellationToken = default)
             => Reload(await GetDatabaseValuesAsync(cancellationToken));
 
         private void Reload(PropertyValues storeValues)
@@ -354,6 +388,7 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
             {
                 if (State != EntityState.Added)
                 {
+                    State = EntityState.Deleted;
                     State = EntityState.Detached;
                 }
             }
@@ -366,7 +401,31 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
         }
 
         private IEntityFinder Finder
-            => InternalEntry.StateManager.Context.GetDependencies().EntityFinderSource
-                .Create(InternalEntry.StateManager.Context, InternalEntry.EntityType);
+            => InternalEntry.StateManager.CreateEntityFinder(InternalEntry.EntityType);
+
+        /// <summary>
+        ///     Returns a string that represents the current object.
+        /// </summary>
+        /// <returns> A string that represents the current object. </returns>
+        public override string ToString() => InternalEntry.ToString();
+
+        #region Hidden System.Object members
+
+        /// <summary>
+        ///     Determines whether the specified object is equal to the current object.
+        /// </summary>
+        /// <param name="obj"> The object to compare with the current object. </param>
+        /// <returns> true if the specified object is equal to the current object; otherwise, false. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override bool Equals(object obj) => base.Equals(obj);
+
+        /// <summary>
+        ///     Serves as the default hash function.
+        /// </summary>
+        /// <returns> A hash code for the current object. </returns>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public override int GetHashCode() => base.GetHashCode();
+
+        #endregion
     }
 }

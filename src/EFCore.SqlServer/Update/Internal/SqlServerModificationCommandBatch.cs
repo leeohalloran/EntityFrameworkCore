@@ -6,14 +6,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using JetBrains.Annotations;
-using Microsoft.EntityFrameworkCore.Internal;
-using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Update;
 
-namespace Microsoft.EntityFrameworkCore.Update.Internal
+namespace Microsoft.EntityFrameworkCore.SqlServer.Update.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///     any release. You should only use it directly in your code with extreme caution and knowing that
+    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
     public class SqlServerModificationCommandBatch : AffectedCountModificationCommandBatch
     {
@@ -27,21 +29,15 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
         private int _commandsLeftToLengthCheck = 50;
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public SqlServerModificationCommandBatch(
-            [NotNull] IRelationalCommandBuilderFactory commandBuilderFactory,
-            [NotNull] ISqlGenerationHelper sqlGenerationHelper,
-            // ReSharper disable once SuggestBaseTypeForParameter
-            [NotNull] ISqlServerUpdateSqlGenerator updateSqlGenerator,
-            [NotNull] IRelationalValueBufferFactoryFactory valueBufferFactoryFactory,
+            [NotNull] ModificationCommandBatchFactoryDependencies dependencies,
             int? maxBatchSize)
-            : base(
-                commandBuilderFactory,
-                sqlGenerationHelper,
-                updateSqlGenerator,
-                valueBufferFactoryFactory)
+            : base(dependencies)
         {
             if (maxBatchSize.HasValue
                 && maxBatchSize.Value <= 0)
@@ -53,14 +49,18 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected new virtual ISqlServerUpdateSqlGenerator UpdateSqlGenerator => (ISqlServerUpdateSqlGenerator)base.UpdateSqlGenerator;
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected override bool CanAddCommand(ModificationCommand modificationCommand)
         {
@@ -81,8 +81,10 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected override bool IsCommandTextValid()
         {
@@ -94,8 +96,8 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
                     return false;
                 }
 
-                var avarageCommandLength = commandTextLength / ModificationCommands.Count;
-                var expectedAdditionalCommandCapacity = (MaxScriptLength - commandTextLength) / avarageCommandLength;
+                var averageCommandLength = commandTextLength / ModificationCommands.Count;
+                var expectedAdditionalCommandCapacity = (MaxScriptLength - commandTextLength) / averageCommandLength;
                 _commandsLeftToLengthCheck = Math.Max(1, expectedAdditionalCommandCapacity / 4);
             }
 
@@ -103,8 +105,10 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected override int GetParameterCount()
             => _parameterCount;
@@ -112,8 +116,10 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
         private static int CountParameters(ModificationCommand modificationCommand)
         {
             var parameterCount = 0;
-            foreach (var columnModification in modificationCommand.ColumnModifications)
+            // ReSharper disable once ForCanBeConvertedToForeach
+            for (var columnIndex = 0; columnIndex < modificationCommand.ColumnModifications.Count; columnIndex++)
             {
+                var columnModification = modificationCommand.ColumnModifications[columnIndex];
                 if (columnModification.UseCurrentValueParameter)
                 {
                     parameterCount++;
@@ -129,8 +135,10 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected override void ResetCommandText()
         {
@@ -139,8 +147,10 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected override string GetCommandText()
             => base.GetCommandText() + GetBulkInsertCommandText(ModificationCommands.Count);
@@ -153,7 +163,8 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
             }
 
             var stringBuilder = new StringBuilder();
-            var resultSetMapping = UpdateSqlGenerator.AppendBulkInsertOperation(stringBuilder, _bulkInsertCommands, lastIndex - _bulkInsertCommands.Count);
+            var resultSetMapping = UpdateSqlGenerator.AppendBulkInsertOperation(
+                stringBuilder, _bulkInsertCommands, lastIndex - _bulkInsertCommands.Count);
             for (var i = lastIndex - _bulkInsertCommands.Count; i < lastIndex; i++)
             {
                 CommandResultSet[i] = resultSetMapping;
@@ -168,8 +179,10 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected override void UpdateCachedCommandText(int commandPosition)
         {
@@ -183,6 +196,7 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
                     CachedCommandText.Append(GetBulkInsertCommandText(commandPosition));
                     _bulkInsertCommands.Clear();
                 }
+
                 _bulkInsertCommands.Add(newModificationCommand);
 
                 LastCachedCommandIndex = commandPosition;
@@ -198,10 +212,10 @@ namespace Microsoft.EntityFrameworkCore.Update.Internal
 
         private static bool CanBeInsertedInSameStatement(ModificationCommand firstCommand, ModificationCommand secondCommand)
             => string.Equals(firstCommand.TableName, secondCommand.TableName, StringComparison.Ordinal)
-               && string.Equals(firstCommand.Schema, secondCommand.Schema, StringComparison.Ordinal)
-               && firstCommand.ColumnModifications.Where(o => o.IsWrite).Select(o => o.ColumnName).SequenceEqual(
-                   secondCommand.ColumnModifications.Where(o => o.IsWrite).Select(o => o.ColumnName))
-               && firstCommand.ColumnModifications.Where(o => o.IsRead).Select(o => o.ColumnName).SequenceEqual(
-                   secondCommand.ColumnModifications.Where(o => o.IsRead).Select(o => o.ColumnName));
+                && string.Equals(firstCommand.Schema, secondCommand.Schema, StringComparison.Ordinal)
+                && firstCommand.ColumnModifications.Where(o => o.IsWrite).Select(o => o.ColumnName).SequenceEqual(
+                    secondCommand.ColumnModifications.Where(o => o.IsWrite).Select(o => o.ColumnName))
+                && firstCommand.ColumnModifications.Where(o => o.IsRead).Select(o => o.ColumnName).SequenceEqual(
+                    secondCommand.ColumnModifications.Where(o => o.IsRead).Select(o => o.ColumnName));
     }
 }

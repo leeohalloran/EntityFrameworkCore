@@ -3,11 +3,12 @@
 
 using System;
 using JetBrains.Annotations;
-using Microsoft.EntityFrameworkCore.Internal;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.EntityFrameworkCore.Utilities;
 using Microsoft.EntityFrameworkCore.ValueGeneration.Internal;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.EntityFrameworkCore.ValueGeneration
 {
@@ -18,6 +19,12 @@ namespace Microsoft.EntityFrameworkCore.ValueGeneration
     ///     <para>
     ///         This type is typically used by database providers (and other extensions). It is generally
     ///         not used in application code.
+    ///     </para>
+    ///     <para>
+    ///         The service lifetime is <see cref="ServiceLifetime.Scoped" />. This means that each
+    ///         <see cref="DbContext" /> instance will use its own instance of this service.
+    ///         The implementation may depend on other services registered with any lifetime.
+    ///         The implementation does not need to be thread-safe.
     ///     </para>
     /// </summary>
     public class ValueGeneratorSelector : IValueGeneratorSelector
@@ -57,7 +64,35 @@ namespace Microsoft.EntityFrameworkCore.ValueGeneration
             Check.NotNull(property, nameof(property));
             Check.NotNull(entityType, nameof(entityType));
 
-            return Cache.GetOrAdd(property, entityType, (p, e) => property.GetValueGeneratorFactory()?.Invoke(p, e) ?? Create(p, e));
+            return Cache.GetOrAdd(property, entityType, (p, t) => CreateFromFactory(p, t) ?? Create(p, t));
+        }
+
+        private static ValueGenerator CreateFromFactory(IProperty property, IEntityType entityType)
+        {
+            var factory = property.GetValueGeneratorFactory();
+
+            if (factory == null)
+            {
+                var mapping = property.FindTypeMapping();
+                factory = mapping?.ValueGeneratorFactory;
+
+                if (factory == null)
+                {
+                    var converter = mapping?.Converter
+                        ?? property.GetValueConverter();
+
+                    if (converter != null)
+                    {
+                        throw new NotSupportedException(
+                            CoreStrings.ValueGenWithConversion(
+                                property.DeclaringEntityType.DisplayName(),
+                                property.Name,
+                                converter.GetType().ShortDisplayName()));
+                    }
+                }
+            }
+
+            return factory?.Invoke(property, entityType);
         }
 
         /// <summary>

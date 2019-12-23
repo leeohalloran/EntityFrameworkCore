@@ -1,11 +1,10 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using Microsoft.EntityFrameworkCore.Tools.Properties;
 
 namespace Microsoft.EntityFrameworkCore.Tools
@@ -31,6 +30,7 @@ namespace Microsoft.EntityFrameworkCore.Tools
         public string ProjectName { get; }
 
         public string AssemblyName { get; set; }
+        public string Language { get; set; }
         public string OutputPath { get; set; }
         public string PlatformTarget { get; set; }
         public string ProjectAssetsFile { get; set; }
@@ -59,7 +59,7 @@ namespace Microsoft.EntityFrameworkCore.Tools
             var efTargetsPath = Path.Combine(
                 buildExtensionsDir,
                 Path.GetFileName(file) + ".EntityFrameworkCore.targets");
-            using (var input = typeof(Resources).GetTypeInfo().Assembly.GetManifestResourceStream(
+            using (var input = typeof(Resources).Assembly.GetManifestResourceStream(
                 "Microsoft.EntityFrameworkCore.Tools.Resources.EntityFrameworkCore.targets"))
             using (var output = File.OpenWrite(efTargetsPath))
             {
@@ -77,10 +77,12 @@ namespace Microsoft.EntityFrameworkCore.Tools
                 {
                     propertyArg += ";TargetFramework=" + framework;
                 }
+
                 if (configuration != null)
                 {
                     propertyArg += ";Configuration=" + configuration;
                 }
+
                 if (runtime != null)
                 {
                     propertyArg += ";RuntimeIdentifier=" + runtime;
@@ -123,6 +125,7 @@ namespace Microsoft.EntityFrameworkCore.Tools
             return new Project(file, framework, configuration, runtime)
             {
                 AssemblyName = metadata["AssemblyName"],
+                Language = metadata["Language"],
                 OutputPath = metadata["OutputPath"],
                 PlatformTarget = platformTarget,
                 ProjectAssetsFile = metadata["ProjectAssetsFile"],
@@ -136,9 +139,7 @@ namespace Microsoft.EntityFrameworkCore.Tools
 
         public void Build()
         {
-            var args = new List<string>();
-
-            args.Add("build");
+            var args = new List<string> { "build" };
 
             if (_file != null)
             {
@@ -166,7 +167,6 @@ namespace Microsoft.EntityFrameworkCore.Tools
 
             args.Add("/verbosity:quiet");
             args.Add("/nologo");
-
 
             var exitCode = Exe.Run("dotnet", args, interceptOutput: true);
             if (exitCode != 0)

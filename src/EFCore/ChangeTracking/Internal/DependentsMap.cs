@@ -9,8 +9,10 @@ using Microsoft.EntityFrameworkCore.Metadata;
 namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///     any release. You should only use it directly in your code with extreme caution and knowing that
+    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
     public class DependentsMap<TKey> : IDependentsMap
     {
@@ -20,8 +22,10 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
         private readonly Dictionary<TKey, HashSet<InternalEntityEntry>> _map;
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public DependentsMap(
             [NotNull] IForeignKey foreignKey,
@@ -35,17 +39,17 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual void Add(InternalEntityEntry entry)
         {
-            TKey key;
             if (_foreignKey.DeclaringEntityType.IsAssignableFrom(entry.EntityType)
-                && TryCreateFromCurrentValues(entry, out key))
+                && TryCreateFromCurrentValues(entry, out var key))
             {
-                HashSet<InternalEntityEntry> dependents;
-                if (!_map.TryGetValue(key, out dependents))
+                if (!_map.TryGetValue(key, out var dependents))
                 {
                     dependents = new HashSet<InternalEntityEntry>();
                     _map[key] = dependents;
@@ -56,17 +60,17 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual void Remove(InternalEntityEntry entry)
         {
-            TKey key;
             if (_foreignKey.DeclaringEntityType.IsAssignableFrom(entry.EntityType)
-                && TryCreateFromCurrentValues(entry, out key))
+                && TryCreateFromCurrentValues(entry, out var key))
             {
-                HashSet<InternalEntityEntry> dependents;
-                if (_map.TryGetValue(key, out dependents))
+                if (_map.TryGetValue(key, out var dependents))
                 {
                     dependents.Remove(entry);
                 }
@@ -74,17 +78,17 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual void Update(InternalEntityEntry entry)
         {
             if (_foreignKey.DeclaringEntityType.IsAssignableFrom(entry.EntityType))
             {
-                TKey key;
-                HashSet<InternalEntityEntry> dependents;
-                if (_dependentKeyValueFactory.TryCreateFromRelationshipSnapshot(entry, out key)
-                    && _map.TryGetValue(key, out dependents))
+                if (_dependentKeyValueFactory.TryCreateFromRelationshipSnapshot(entry, out var key)
+                    && _map.TryGetValue(key, out var dependents))
                 {
                     dependents.Remove(entry);
                 }
@@ -109,7 +113,7 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
             {
                 if (entry.IsConceptualNull(property))
                 {
-                    key = default(TKey);
+                    key = default;
                     return false;
                 }
             }
@@ -118,25 +122,27 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual IEnumerable<InternalEntityEntry> GetDependents(InternalEntityEntry principalEntry)
         {
-            HashSet<InternalEntityEntry> dependents;
-            return _map.TryGetValue(_principalKeyValueFactory.CreateFromCurrentValues(principalEntry), out dependents)
+            return _map.TryGetValue(_principalKeyValueFactory.CreateFromCurrentValues(principalEntry), out var dependents)
                 ? dependents
                 : Enumerable.Empty<InternalEntityEntry>();
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual IEnumerable<InternalEntityEntry> GetDependentsUsingRelationshipSnapshot(InternalEntityEntry principalEntry)
         {
-            HashSet<InternalEntityEntry> dependents;
-            return _map.TryGetValue(_principalKeyValueFactory.CreateFromRelationshipSnapshot(principalEntry), out dependents)
+            return _map.TryGetValue(_principalKeyValueFactory.CreateFromRelationshipSnapshot(principalEntry), out var dependents)
                 ? dependents
                 : Enumerable.Empty<InternalEntityEntry>();
         }

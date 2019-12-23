@@ -1,4 +1,4 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
@@ -9,9 +9,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.ChangeTracking.Internal;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
 
 namespace Microsoft.EntityFrameworkCore.ChangeTracking
 {
@@ -28,18 +29,24 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
     public abstract class NavigationEntry : MemberEntry
     {
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
+        [EntityFrameworkInternal]
         protected NavigationEntry([NotNull] InternalEntityEntry internalEntry, [NotNull] string name, bool collection)
             : this(internalEntry, GetNavigation(internalEntry, name, collection))
         {
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
+        [EntityFrameworkInternal]
         protected NavigationEntry([NotNull] InternalEntityEntry internalEntry, [NotNull] INavigation navigation)
             : base(internalEntry, navigation)
         {
@@ -55,8 +62,10 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
                     throw new InvalidOperationException(
                         CoreStrings.NavigationIsProperty(
                             name, internalEntry.EntityType.DisplayName(),
-                            nameof(EntityEntry.Reference), nameof(EntityEntry.Collection), nameof(EntityEntry.Property)));
+                            nameof(ChangeTracking.EntityEntry.Reference), nameof(ChangeTracking.EntityEntry.Collection),
+                            nameof(ChangeTracking.EntityEntry.Property)));
                 }
+
                 throw new InvalidOperationException(CoreStrings.PropertyNotFound(name, internalEntry.EntityType.DisplayName()));
             }
 
@@ -66,7 +75,7 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
                 throw new InvalidOperationException(
                     CoreStrings.CollectionIsReference(
                         name, internalEntry.EntityType.DisplayName(),
-                        nameof(EntityEntry.Collection), nameof(EntityEntry.Reference)));
+                        nameof(ChangeTracking.EntityEntry.Collection), nameof(ChangeTracking.EntityEntry.Reference)));
             }
 
             if (!collection
@@ -75,7 +84,7 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
                 throw new InvalidOperationException(
                     CoreStrings.ReferenceIsCollection(
                         name, internalEntry.EntityType.DisplayName(),
-                        nameof(EntityEntry.Reference), nameof(EntityEntry.Collection)));
+                        nameof(ChangeTracking.EntityEntry.Reference), nameof(ChangeTracking.EntityEntry.Collection)));
             }
 
             return navigation;
@@ -115,11 +124,11 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
         ///     A <see cref="CancellationToken" /> to observe while waiting for the task to complete.
         /// </param>
         /// <returns>
-        ///     A task that represents the asynchronous save operation.
+        ///     A task that represents the asynchronous operation.
         /// </returns>
-        public virtual Task LoadAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public virtual Task LoadAsync(CancellationToken cancellationToken = default)
             => IsLoaded
-                ? Task.FromResult(0)
+                ? Task.CompletedTask
                 : TargetFinder.LoadAsync(Metadata, InternalEntry, cancellationToken);
 
         /// <summary>
@@ -146,7 +155,7 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
         ///         <see cref="EntityFrameworkQueryableExtensions.Include{TEntity,TProperty}" /> or
         ///         <see
         ///             cref="EntityFrameworkQueryableExtensions.ThenInclude{TEntity,TPreviousProperty,TProperty}(EntityFrameworkCore.Query.IIncludableQueryable{TEntity,IEnumerable{TPreviousProperty}},System.Linq.Expressions.Expression{System.Func{TPreviousProperty,TProperty}})" />
-        ///         , <see cref="Load" />, or <see cref="LoadAsync" /> will set this flag. Subseqent calls to <see cref="Load" />
+        ///         , <see cref="Load" />, or <see cref="LoadAsync" /> will set this flag. Subsequent calls to <see cref="Load" />
         ///         or <see cref="LoadAsync" /> will then be a no-op.
         ///     </para>
         ///     <para>
@@ -161,17 +170,12 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
         /// </value>
         public virtual bool IsLoaded
         {
-            get { return InternalEntry.IsLoaded(Metadata); }
-            set { InternalEntry.SetIsLoaded(Metadata, value); }
+            get => InternalEntry.IsLoaded(Metadata);
+            set => InternalEntry.SetIsLoaded(Metadata, value);
         }
 
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
         private IEntityFinder TargetFinder
-            => InternalEntry.StateManager.Context.GetDependencies().EntityFinderSource
-                .Create(InternalEntry.StateManager.Context, Metadata.GetTargetType());
+            => InternalEntry.StateManager.CreateEntityFinder(Metadata.GetTargetType());
 
         /// <summary>
         ///     Gets or sets a value indicating whether any of foreign key property values associated
@@ -190,9 +194,9 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
                 var navigationValue = CurrentValue;
 
                 return navigationValue != null
-                       && (Metadata.IsCollection()
-                           ? ((IEnumerable)navigationValue).OfType<object>().Any(AnyFkPropertiesModified)
-                           : AnyFkPropertiesModified(navigationValue));
+                    && (Metadata.IsCollection()
+                        ? ((IEnumerable)navigationValue).OfType<object>().Any(CollectionContainsNewOrChangedRelationships)
+                        : AnyFkPropertiesModified(navigationValue));
             }
             set
             {
@@ -221,12 +225,22 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
             }
         }
 
+        private bool CollectionContainsNewOrChangedRelationships(object relatedEntity)
+        {
+            var relatedEntry = InternalEntry.StateManager.TryGetEntry(relatedEntity, Metadata.GetTargetType());
+
+            return relatedEntry != null
+                && (relatedEntry.EntityState == EntityState.Added
+                    || relatedEntry.EntityState == EntityState.Deleted
+                    || Metadata.ForeignKey.Properties.Any(relatedEntry.IsModified));
+        }
+
         private bool AnyFkPropertiesModified(object relatedEntity)
         {
             var relatedEntry = InternalEntry.StateManager.TryGetEntry(relatedEntity, Metadata.GetTargetType());
 
             return relatedEntry != null
-                   && Metadata.ForeignKey.Properties.Any(relatedEntry.IsModified);
+                && Metadata.ForeignKey.Properties.Any(relatedEntry.IsModified);
         }
 
         private void SetFkPropertiesModified(object relatedEntity, bool modified)
@@ -240,9 +254,14 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking
 
         private void SetFkPropertiesModified(InternalEntityEntry internalEntityEntry, bool modified)
         {
+            var anyNonPk = Metadata.ForeignKey.Properties.Any(p => !p.IsPrimaryKey());
             foreach (var property in Metadata.ForeignKey.Properties)
             {
-                internalEntityEntry.SetPropertyModified(property, isModified: modified);
+                if (anyNonPk
+                    && !property.IsPrimaryKey())
+                {
+                    internalEntityEntry.SetPropertyModified(property, isModified: modified, acceptChanges: true);
+                }
             }
         }
 

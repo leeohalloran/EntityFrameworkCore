@@ -9,32 +9,31 @@ using Xunit;
 // ReSharper disable InconsistentNaming
 namespace Microsoft.EntityFrameworkCore
 {
-    public class StoreGeneratedFixupSqliteTest : StoreGeneratedFixupTestBase<StoreGeneratedFixupSqliteTest.StoreGeneratedFixupSqliteFixture>
+    public class StoreGeneratedFixupSqliteTest : StoreGeneratedFixupRelationalTestBase<
+        StoreGeneratedFixupSqliteTest.StoreGeneratedFixupSqliteFixture>
     {
         public StoreGeneratedFixupSqliteTest(StoreGeneratedFixupSqliteFixture fixture)
             : base(fixture)
         {
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Temp_values_can_be_made_permanent()
         {
-            using (var context = CreateContext())
-            {
-                var entry = context.Add(new TestTemp());
+            using var context = CreateContext();
+            var entry = context.Add(new TestTemp());
 
-                Assert.True(entry.Property(e => e.Id).IsTemporary);
-                Assert.False(entry.Property(e => e.NotId).IsTemporary);
+            Assert.True(entry.Property(e => e.Id).IsTemporary);
+            Assert.False(entry.Property(e => e.NotId).IsTemporary);
 
-                var tempValue = entry.Property(e => e.Id).CurrentValue;
+            var tempValue = entry.Property(e => e.Id).CurrentValue;
 
-                entry.Property(e => e.Id).IsTemporary = false;
+            entry.Property(e => e.Id).IsTemporary = false;
 
-                context.SaveChanges();
+            context.SaveChanges();
 
-                Assert.False(entry.Property(e => e.Id).IsTemporary);
-                Assert.Equal(tempValue, entry.Property(e => e.Id).CurrentValue);
-            }
+            Assert.False(entry.Property(e => e.Id).IsTemporary);
+            Assert.Equal(tempValue, entry.Property(e => e.Id).CurrentValue);
         }
 
         protected override bool EnforcesFKs => true;
@@ -42,7 +41,7 @@ namespace Microsoft.EntityFrameworkCore
         protected override void UseTransaction(DatabaseFacade facade, IDbContextTransaction transaction)
             => facade.UseTransaction(transaction.GetDbTransaction());
 
-        public class StoreGeneratedFixupSqliteFixture : StoreGeneratedFixupFixtureBase
+        public class StoreGeneratedFixupSqliteFixture : StoreGeneratedFixupRelationalFixtureBase
         {
             protected override ITestStoreFactory TestStoreFactory => SqliteTestStoreFactory.Instance;
         }

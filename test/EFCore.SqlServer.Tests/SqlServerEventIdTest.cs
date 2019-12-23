@@ -4,22 +4,26 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.EntityFrameworkCore.Internal;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
-using Microsoft.EntityFrameworkCore.TestUtilities;
+using Microsoft.EntityFrameworkCore.SqlServer.Diagnostics.Internal;
+using Microsoft.EntityFrameworkCore.SqlServer.Internal;
 using Xunit;
 
+// ReSharper disable InconsistentNaming
 namespace Microsoft.EntityFrameworkCore
 {
-    public class SqlServerEventIdTest
+    public class SqlServerEventIdTest : EventIdTestBase
     {
-        [Fact]
+        [ConditionalFact]
         public void Every_eventId_has_a_logger_method_and_logs_when_level_enabled()
         {
             var entityType = new EntityType(typeof(object), new Model(new ConventionSet()), ConfigurationSource.Convention);
-            var property = new Property("A", typeof(int), null, null, entityType, ConfigurationSource.Convention, ConfigurationSource.Convention);
+            var property = new Property(
+                "A", typeof(int), null, null, entityType, ConfigurationSource.Convention, ConfigurationSource.Convention);
+            entityType.Model.FinalizeModel();
 
             var fakeFactories = new Dictionary<Type, Func<object>>
             {
@@ -28,9 +32,10 @@ namespace Microsoft.EntityFrameworkCore
                 { typeof(string), () => "Fake" }
             };
 
-            SqlServerTestHelpers.Instance.TestEventLogging(
+            TestEventLogging(
                 typeof(SqlServerEventId),
                 typeof(SqlServerLoggerExtensions),
+                typeof(SqlServerLoggingDefinitions),
                 fakeFactories);
         }
     }

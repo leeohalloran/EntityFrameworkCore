@@ -3,46 +3,52 @@
 
 using System.Linq;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Microsoft.EntityFrameworkCore.SqlServer.Metadata.Internal;
 using Microsoft.EntityFrameworkCore.TestUtilities;
 using Xunit;
 
+// ReSharper disable InconsistentNaming
 namespace Microsoft.EntityFrameworkCore.Metadata.Conventions
 {
     public class SqlServerValueGenerationStrategyConventionTest
     {
-        [Fact]
+        [ConditionalFact]
         public void Annotations_are_added_when_conventional_model_builder_is_used()
         {
             var model = SqlServerTestHelpers.Instance.CreateConventionBuilder().Model;
+            model.RemoveAnnotation(CoreAnnotationNames.ProductVersion);
 
-            Assert.Equal(1, model.GetAnnotations().Count());
+            var annotations = model.GetAnnotations().OrderBy(a => a.Name).ToList();
+            Assert.Equal(2, annotations.Count);
 
-            Assert.Equal(SqlServerAnnotationNames.ValueGenerationStrategy, model.GetAnnotations().Single().Name);
-            Assert.Equal(SqlServerValueGenerationStrategy.IdentityColumn, model.GetAnnotations().Single().Value);
+            Assert.Equal(SqlServerAnnotationNames.ValueGenerationStrategy, annotations.Last().Name);
+            Assert.Equal(SqlServerValueGenerationStrategy.IdentityColumn, annotations.Last().Value);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Annotations_are_added_when_conventional_model_builder_is_used_with_sequences()
         {
             var model = SqlServerTestHelpers.Instance.CreateConventionBuilder()
-                .ForSqlServerUseSequenceHiLo()
+                .UseHiLo()
                 .Model;
 
-            var annotations = model.GetAnnotations().OrderBy(a => a.Name);
-            Assert.Equal(3, annotations.Count());
+            model.RemoveAnnotation(CoreAnnotationNames.ProductVersion);
+
+            var annotations = model.GetAnnotations().OrderBy(a => a.Name).ToList();
+            Assert.Equal(4, annotations.Count);
+
+            Assert.Equal(RelationalAnnotationNames.MaxIdentifierLength, annotations[0].Name);
 
             Assert.Equal(
-                RelationalAnnotationNames.SequencePrefix +
-                "." +
-                SqlServerModelAnnotations.DefaultHiLoSequenceName,
-                annotations.ElementAt(0).Name);
-            Assert.NotNull(annotations.ElementAt(0).Value);
+                RelationalAnnotationNames.SequencePrefix + "." + SqlServerModelExtensions.DefaultHiLoSequenceName,
+                annotations[1].Name);
+            Assert.NotNull(annotations[1].Value);
 
-            Assert.Equal(SqlServerAnnotationNames.HiLoSequenceName, annotations.ElementAt(1).Name);
-            Assert.Equal(SqlServerModelAnnotations.DefaultHiLoSequenceName, annotations.ElementAt(1).Value);
+            Assert.Equal(SqlServerAnnotationNames.HiLoSequenceName, annotations[2].Name);
+            Assert.Equal(SqlServerModelExtensions.DefaultHiLoSequenceName, annotations[2].Value);
 
-            Assert.Equal(SqlServerAnnotationNames.ValueGenerationStrategy, annotations.ElementAt(2).Name);
-            Assert.Equal(SqlServerValueGenerationStrategy.SequenceHiLo, annotations.ElementAt(2).Value);
+            Assert.Equal(SqlServerAnnotationNames.ValueGenerationStrategy, annotations[3].Name);
+            Assert.Equal(SqlServerValueGenerationStrategy.SequenceHiLo, annotations[3].Value);
         }
     }
 }

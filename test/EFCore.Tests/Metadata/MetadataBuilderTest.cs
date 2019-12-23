@@ -3,16 +3,19 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.TestUtilities;
 using Xunit;
 
+// ReSharper disable MemberCanBePrivate.Local
+// ReSharper disable CollectionNeverUpdated.Local
+// ReSharper disable UnusedAutoPropertyAccessor.Local
+// ReSharper disable InconsistentNaming
 namespace Microsoft.EntityFrameworkCore.Metadata
 {
     public class MetadataBuilderTest
     {
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_model_builder_extension()
         {
             var builder = CreateModelBuilder();
@@ -27,10 +30,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", model["Annotation"]);
             Assert.Equal("V2.Metadata", model["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_entity_builder_extension()
         {
             var builder = CreateModelBuilder();
@@ -47,10 +49,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", entityType["Annotation"]);
             Assert.Equal("V2.Metadata", entityType["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_entity_builder_extension_and_use_with_generic_builder()
         {
             var builder = CreateModelBuilder();
@@ -67,10 +68,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", entityType["Annotation"]);
             Assert.Equal("V2.Metadata", entityType["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_generic_convention_entity_builder_extension()
         {
             var builder = CreateModelBuilder();
@@ -87,10 +87,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", entityType["Annotation"]);
             Assert.Equal("V2.Metadata", entityType["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_key_builder_extension()
         {
             var builder = CreateModelBuilder();
@@ -108,10 +107,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", key["Annotation"]);
             Assert.Equal("V2.Metadata", key["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_property_builder_extension()
         {
             var builder = CreateModelBuilder();
@@ -129,10 +127,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", property["Annotation"]);
             Assert.Equal("V2.Metadata", property["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_index_builder_extension()
         {
             var builder = CreateModelBuilder();
@@ -143,17 +140,16 @@ namespace Microsoft.EntityFrameworkCore.Metadata
                 .IndexBuilderExtension("V1")
                 .IndexBuilderExtension("V2");
 
-            Assert.IsType<IndexBuilder>(returnedBuilder);
+            Assert.IsType<IndexBuilder<Gunter>>(returnedBuilder);
 
             var model = builder.Model;
             var index = model.FindEntityType(typeof(Gunter)).GetIndexes().Single(i => i.Properties.All(p => p.Name == nameof(Gunter.Id)));
 
             Assert.Equal("V2.Annotation", index["Annotation"]);
             Assert.Equal("V2.Metadata", index["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_one_to_many_builder_extension()
         {
             var builder = CreateModelBuilder();
@@ -172,10 +168,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", foreignKey["Annotation"]);
             Assert.Equal("V2.Metadata", foreignKey["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_many_to_one_builder_extension()
         {
             var builder = CreateModelBuilder();
@@ -194,10 +189,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", foreignKey["Annotation"]);
             Assert.Equal("V2.Metadata", foreignKey["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_one_to_one_builder_extension()
         {
             var builder = CreateModelBuilder();
@@ -217,10 +211,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", foreignKey["Annotation"]);
             Assert.Equal("V2.Metadata", foreignKey["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_model_builder_extension_with_common_name()
         {
             var builder = CreateModelBuilder();
@@ -235,10 +228,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", model["Annotation"]);
             Assert.Equal("V2.Metadata", model["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_entity_builder_extension_with_common_name()
         {
             var builder = CreateModelBuilder();
@@ -255,10 +247,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", entityType["Annotation"]);
             Assert.Equal("V2.Metadata", entityType["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_entity_builder_extension_and_use_with_generic_builder_with_common_name()
         {
             var builder = CreateModelBuilder();
@@ -275,10 +266,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", entityType["Annotation"]);
             Assert.Equal("V2.Metadata", entityType["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_generic_convention_entity_builder_extension_with_common_name()
         {
             var builder = CreateModelBuilder();
@@ -295,10 +285,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", entityType["Annotation"]);
             Assert.Equal("V2.Metadata", entityType["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_key_builder_extension_with_common_name()
         {
             var builder = CreateModelBuilder();
@@ -316,10 +305,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", key["Annotation"]);
             Assert.Equal("V2.Metadata", key["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_property_builder_extension_with_common_name()
         {
             var builder = CreateModelBuilder();
@@ -337,10 +325,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", property["Annotation"]);
             Assert.Equal("V2.Metadata", property["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_index_builder_extension_with_common_name()
         {
             var builder = CreateModelBuilder();
@@ -351,17 +338,16 @@ namespace Microsoft.EntityFrameworkCore.Metadata
                 .SharedNameExtension("V1")
                 .SharedNameExtension("V2");
 
-            Assert.IsType<IndexBuilder>(returnedBuilder);
+            Assert.IsType<IndexBuilder<Gunter>>(returnedBuilder);
 
             var model = builder.Model;
             var index = model.FindEntityType(typeof(Gunter)).GetIndexes().Single(i => i.Properties.All(p => p.Name == nameof(Gunter.Id)));
 
             Assert.Equal("V2.Annotation", index["Annotation"]);
             Assert.Equal("V2.Metadata", index["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_one_to_many_builder_extension_with_common_name()
         {
             var builder = CreateModelBuilder();
@@ -380,10 +366,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", foreignKey["Annotation"]);
             Assert.Equal("V2.Metadata", foreignKey["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_many_to_one_builder_extension_with_common_name()
         {
             var builder = CreateModelBuilder();
@@ -402,10 +387,9 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", foreignKey["Annotation"]);
             Assert.Equal("V2.Metadata", foreignKey["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Can_write_convention_one_to_one_builder_extension_with_common_name()
         {
             var builder = CreateModelBuilder();
@@ -425,7 +409,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata
 
             Assert.Equal("V2.Annotation", foreignKey["Annotation"]);
             Assert.Equal("V2.Metadata", foreignKey["Metadata"]);
-            Assert.Equal("V2.Model", model["Model"]);
         }
 
         protected virtual ModelBuilder CreateModelBuilder()
@@ -464,7 +447,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Model["Metadata"] = value + ".Metadata";
-            builder.Model["Model"] = value + ".Model";
 
             return builder;
         }
@@ -473,17 +455,16 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
 
-        public static EntityTypeBuilder<TEntity> GenericEntityBuilderExtension<TEntity>(this EntityTypeBuilder<TEntity> builder, string value)
+        public static EntityTypeBuilder<TEntity> GenericEntityBuilderExtension<TEntity>(
+            this EntityTypeBuilder<TEntity> builder, string value)
             where TEntity : class
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
@@ -492,7 +473,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
@@ -501,7 +481,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
@@ -510,7 +489,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
@@ -519,7 +497,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
@@ -528,7 +505,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
@@ -537,7 +513,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
@@ -555,17 +530,16 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
 
-        public static EntityTypeBuilder<TEntity> SharedNameExtension<TEntity, TBuilder>(this EntityTypeBuilder<TEntity> builder, string value)
+        public static EntityTypeBuilder<TEntity> SharedNameExtension<TEntity, TBuilder>(
+            this EntityTypeBuilder<TEntity> builder, string value)
             where TEntity : class
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
@@ -574,7 +548,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
@@ -583,7 +556,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
@@ -592,7 +564,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
@@ -601,7 +572,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }
@@ -610,7 +580,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         {
             builder.HasAnnotation("Annotation", value + ".Annotation");
             builder.Metadata["Metadata"] = value + ".Metadata";
-            builder.GetInfrastructure<IMutableModel>()["Model"] = value + ".Model";
 
             return builder;
         }

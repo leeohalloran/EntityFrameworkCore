@@ -1,4 +1,4 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
@@ -6,22 +6,81 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Microsoft.EntityFrameworkCore.Scaffolding.Metadata;
 using Microsoft.EntityFrameworkCore.Utilities;
 
 namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///     any release. You should only use it directly in your code with extreme caution and knowing that
+    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
     public class CandidateNamingService : ICandidateNamingService
     {
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public virtual string GenerateCandidateIdentifier(string originalIdentifier)
+        public virtual string GenerateCandidateIdentifier(DatabaseTable originalTable)
+        {
+            return GenerateCandidateIdentifier(originalTable.Name);
+        }
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        public virtual string GenerateCandidateIdentifier(DatabaseColumn originalColumn)
+        {
+            return GenerateCandidateIdentifier(originalColumn.Name);
+        }
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        public virtual string GetDependentEndCandidateNavigationPropertyName(IForeignKey foreignKey)
+        {
+            Check.NotNull(foreignKey, nameof(foreignKey));
+
+            var candidateName = FindCandidateNavigationName(foreignKey.Properties);
+
+            return !string.IsNullOrEmpty(candidateName) ? candidateName : foreignKey.PrincipalEntityType.ShortName();
+        }
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        public virtual string GetPrincipalEndCandidateNavigationPropertyName(
+            IForeignKey foreignKey,
+            string dependentEndNavigationPropertyName)
+        {
+            Check.NotNull(foreignKey, nameof(foreignKey));
+            Check.NotEmpty(dependentEndNavigationPropertyName, nameof(dependentEndNavigationPropertyName));
+
+            var allForeignKeysBetweenDependentAndPrincipal =
+                foreignKey.PrincipalEntityType?
+                    .GetReferencingForeignKeys()
+                    .Where(fk => foreignKey.DeclaringEntityType == fk.DeclaringEntityType);
+
+            return allForeignKeysBetweenDependentAndPrincipal?.Count() > 1
+                ? foreignKey.DeclaringEntityType.ShortName()
+                  + dependentEndNavigationPropertyName
+                : foreignKey.DeclaringEntityType.ShortName();
+        }
+
+        private static string GenerateCandidateIdentifier(string originalIdentifier)
         {
             Check.NotEmpty(originalIdentifier, nameof(originalIdentifier));
 
@@ -54,51 +113,7 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             return candidateStringBuilder.ToString();
         }
 
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GetDependentEndCandidateNavigationPropertyName(IForeignKey foreignKey)
-        {
-            Check.NotNull(foreignKey, nameof(foreignKey));
-
-            var candidateName = FindCandidateNavigationName(foreignKey.Properties);
-
-            if (!string.IsNullOrEmpty(candidateName))
-            {
-                return candidateName;
-            }
-
-            return foreignKey.PrincipalEntityType.ShortName();
-        }
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GetPrincipalEndCandidateNavigationPropertyName(
-            IForeignKey foreignKey,
-            string dependentEndNavigationPropertyName)
-        {
-            Check.NotNull(foreignKey, nameof(foreignKey));
-            Check.NotEmpty(dependentEndNavigationPropertyName, nameof(dependentEndNavigationPropertyName));
-
-            var allForeignKeysBetweenDependentAndPrincipal =
-                foreignKey.PrincipalEntityType?
-                    .GetReferencingForeignKeys()
-                    .Where(fk => foreignKey.DeclaringEntityType == fk.DeclaringEntityType);
-
-            if (allForeignKeysBetweenDependentAndPrincipal != null
-                && allForeignKeysBetweenDependentAndPrincipal.Count() > 1)
-            {
-                return foreignKey.DeclaringEntityType.ShortName()
-                       + dependentEndNavigationPropertyName;
-            }
-
-            return foreignKey.DeclaringEntityType.ShortName();
-        }
-
-        private string FindCandidateNavigationName(IEnumerable<IProperty> properties)
+        private static string FindCandidateNavigationName(IEnumerable<IProperty> properties)
         {
             if (!properties.Any())
             {
@@ -116,10 +131,10 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
                 candidateName = FindCommonPrefix(firstProperty.Name, properties.Select(p => p.Name));
             }
 
-            return StripId(candidateName, properties);
+            return StripId(candidateName);
         }
 
-        private string FindCommonPrefix(string firstName, IEnumerable<string> propertyNames)
+        private static string FindCommonPrefix(string firstName, IEnumerable<string> propertyNames)
         {
             var prefixLength = 0;
             foreach (var c in firstName)
@@ -139,15 +154,12 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             return firstName.Substring(0, prefixLength);
         }
 
-        private string StripId(string commonPrefix, IEnumerable<IProperty> properties)
+        private static string StripId(string commonPrefix)
         {
-            if (commonPrefix.Length > 2
-                && commonPrefix.EndsWith("id", StringComparison.OrdinalIgnoreCase))
-            {
-                return commonPrefix.Substring(0, commonPrefix.Length - 2);
-            }
-
-            return commonPrefix;
+            return commonPrefix.Length > 2
+                   && commonPrefix.EndsWith("id", StringComparison.OrdinalIgnoreCase)
+                ? commonPrefix[..^2]
+                : commonPrefix;
         }
     }
 }

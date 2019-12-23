@@ -9,7 +9,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata
     public interface INavigation : IPropertyBase
     {
         /// <summary>
-        ///     Gets the entity type that this property belongs to.
+        ///     Gets the entity type that this navigation property belongs to.
         /// </summary>
         IEntityType DeclaringEntityType { get; }
 
@@ -17,10 +17,5 @@ namespace Microsoft.EntityFrameworkCore.Metadata
         ///     Gets the foreign key that defines the relationship this navigation property will navigate.
         /// </summary>
         IForeignKey ForeignKey { get; }
-
-        /// <summary>
-        ///     Determines whether this navigation should be eager loaded by default.
-        /// </summary>
-        bool IsEagerLoaded { get; }
     }
 }

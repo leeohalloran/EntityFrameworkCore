@@ -4,25 +4,33 @@
 using System;
 using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Internal;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.EntityFrameworkCore.Storage.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     <para>
+    ///         This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///         the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///         any release. You should only use it directly in your code with extreme caution and knowing that
+    ///         doing so can result in application failures when updating to a new Entity Framework Core release.
+    ///     </para>
+    ///     <para>
+    ///         The service lifetime is <see cref="ServiceLifetime.Scoped" />. This means that each
+    ///         <see cref="DbContext" /> instance will use its own instance of this service.
+    ///         The implementation may depend on other services registered with any lifetime.
+    ///         The implementation does not need to be thread-safe.
+    ///     </para>
     /// </summary>
-    public class NamedConnectionStringResolver : INamedConnectionStringResolver
+    public class NamedConnectionStringResolver : NamedConnectionStringResolverBase
     {
-        private const string DefaultSection = "ConnectionStrings:";
-
         private readonly IDbContextOptions _options;
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public NamedConnectionStringResolver([NotNull] IDbContextOptions options)
         {
@@ -30,54 +38,13 @@ namespace Microsoft.EntityFrameworkCore.Storage.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public virtual string ResolveConnectionString(string connectionString)
-        {
-            var connectionName = TryGetConnectionName(connectionString);
-
-            if (connectionName == null)
-            {
-                return connectionString;
-            }
-
-            var configuration = _options.FindExtension<CoreOptionsExtension>()
-                ?.ApplicationServiceProvider
-                ?.GetService<IConfiguration>();
-
-            var resolved = configuration?[connectionName]
-                           ?? configuration?[DefaultSection + connectionName];
-
-            if (resolved == null)
-            {
-                throw new InvalidOperationException(
-                    RelationalStrings.NamedConnectionStringNotFound(connectionName));
-            }
-
-            return resolved;
-        }
-
-        private static string TryGetConnectionName(string connectionString)
-        {
-            var firstEquals = connectionString.IndexOf('=');
-            if (firstEquals < 0)
-            {
-                return null;
-            }
-
-            if (connectionString.IndexOf('=', firstEquals + 1) >= 0)
-            {
-                return null;
-            }
-
-            if (connectionString.Substring(0, firstEquals).Trim().Equals(
-                "name", StringComparison.OrdinalIgnoreCase))
-            {
-                return connectionString.Substring(firstEquals + 1).Trim();
-            }
-
-            return null;
-        }
+        protected override IServiceProvider ApplicationServiceProvider
+            => _options.FindExtension<CoreOptionsExtension>()
+                ?.ApplicationServiceProvider;
     }
 }

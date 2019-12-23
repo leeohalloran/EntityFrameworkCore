@@ -1,6 +1,7 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System;
 using System.IO;
 using System.Reflection;
 using Microsoft.DotNet.Cli.CommandLine;
@@ -15,16 +16,19 @@ namespace Microsoft.EntityFrameworkCore.Tools.Commands
         private CommandOption _dataDir;
         private CommandOption _projectDir;
         private CommandOption _rootNamespace;
-        private CommandOption _noAppDomain;
+        private CommandOption _language;
+
+        protected CommandOption WorkingDir { get; private set; }
 
         public override void Configure(CommandLineApplication command)
         {
             _assembly = command.Option("-a|--assembly <PATH>", Resources.AssemblyDescription);
-            _noAppDomain = command.Option("--no-appdomain", Resources.NoAppDomainDescription);
             _startupAssembly = command.Option("-s|--startup-assembly <PATH>", Resources.StartupAssemblyDescription);
             _dataDir = command.Option("--data-dir <PATH>", Resources.DataDirDescription);
             _projectDir = command.Option("--project-dir <PATH>", Resources.ProjectDirDescription);
             _rootNamespace = command.Option("--root-namespace <NAMESPACE>", Resources.RootNamespaceDescription);
+            _language = command.Option("--language <LANGUAGE>", Resources.LanguageDescription);
+            WorkingDir = command.Option("--working-dir <PATH>", Resources.WorkingDirDescription);
 
             base.Configure(command);
         }
@@ -44,17 +48,20 @@ namespace Microsoft.EntityFrameworkCore.Tools.Commands
             try
             {
 #if NET461
-                if (!_noAppDomain.HasValue())
+                try
                 {
                     return new AppDomainOperationExecutor(
                         _assembly.Value(),
                         _startupAssembly.Value(),
                         _projectDir.Value(),
                         _dataDir.Value(),
-                        _rootNamespace.Value());
+                        _rootNamespace.Value(),
+                        _language.Value());
                 }
-#elif NETCOREAPP2_0
-#else
+                catch (MissingMethodException) // NB: Thrown with EF Core 3.1
+                {
+                }
+#elif !NETCOREAPP2_0
 #error target frameworks need to be updated.
 #endif
                 return new ReflectionOperationExecutor(
@@ -62,7 +69,8 @@ namespace Microsoft.EntityFrameworkCore.Tools.Commands
                     _startupAssembly.Value(),
                     _projectDir.Value(),
                     _dataDir.Value(),
-                    _rootNamespace.Value());
+                    _rootNamespace.Value(),
+                    _language.Value());
             }
             catch (FileNotFoundException ex)
                 when (new AssemblyName(ex.FileName).Name == OperationExecutorBase.DesignAssemblyName)

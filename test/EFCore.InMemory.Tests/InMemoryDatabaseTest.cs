@@ -2,70 +2,76 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore.ChangeTracking.Internal;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.EntityFrameworkCore.Internal;
+using Microsoft.EntityFrameworkCore.InMemory.Diagnostics.Internal;
+using Microsoft.EntityFrameworkCore.InMemory.Internal;
+using Microsoft.EntityFrameworkCore.InMemory.Metadata.Conventions;
+using Microsoft.EntityFrameworkCore.InMemory.Storage.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Metadata.Conventions;
-using Microsoft.EntityFrameworkCore.Storage.Internal;
 using Microsoft.EntityFrameworkCore.TestUtilities;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Xunit;
 
+// ReSharper disable InconsistentNaming
+
 namespace Microsoft.EntityFrameworkCore
 {
     public class InMemoryDatabaseTest
     {
-        [Fact]
+        [ConditionalFact]
         public void Uses_persistent_database_by_default()
         {
             var serviceProvider = InMemoryTestHelpers.Instance.CreateServiceProvider();
 
-            var store1 = InMemoryTestHelpers.Instance.CreateContextServices(serviceProvider, CreateModel()).GetRequiredService<IInMemoryDatabase>();
-            var store2 = InMemoryTestHelpers.Instance.CreateContextServices(serviceProvider, CreateModel()).GetRequiredService<IInMemoryDatabase>();
+            var store1 = InMemoryTestHelpers.Instance.CreateContextServices(serviceProvider, CreateModel())
+                .GetRequiredService<IInMemoryDatabase>();
+            var store2 = InMemoryTestHelpers.Instance.CreateContextServices(serviceProvider, CreateModel())
+                .GetRequiredService<IInMemoryDatabase>();
 
             Assert.Same(store1.Store, store2.Store);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void Uses_persistent_database_if_configured_as_persistent()
         {
             var serviceProvider = InMemoryTestHelpers.Instance.CreateServiceProvider();
 
             Assert.Same(
-                CreateStore(serviceProvider, persist: true).Store,
-                CreateStore(serviceProvider, persist: true).Store);
+                CreateStore(serviceProvider).Store,
+                CreateStore(serviceProvider).Store);
         }
 
-        [Fact]
+        [ConditionalFact]
         public void EnsureDatabaseCreated_returns_true_for_first_use_of_persistent_database_and_false_thereafter()
         {
             var serviceProvider = InMemoryTestHelpers.Instance.CreateServiceProvider();
-            var model = CreateModel();
-            var store = CreateStore(serviceProvider, persist: true);
+            var store = CreateStore(serviceProvider);
 
-            Assert.True(store.EnsureDatabaseCreated(model));
-            Assert.False(store.EnsureDatabaseCreated(model));
-            Assert.False(store.EnsureDatabaseCreated(model));
+            Assert.True(store.EnsureDatabaseCreated());
+            Assert.False(store.EnsureDatabaseCreated());
+            Assert.False(store.EnsureDatabaseCreated());
 
-            store = CreateStore(serviceProvider, persist: true);
+            store = CreateStore(serviceProvider);
 
-            Assert.False(store.EnsureDatabaseCreated(model));
+            Assert.False(store.EnsureDatabaseCreated());
         }
 
-        private static IInMemoryDatabase CreateStore(IServiceProvider serviceProvider, bool persist)
+        private static IInMemoryDatabase CreateStore(IServiceProvider serviceProvider)
+            => CreateContextServices(serviceProvider).GetRequiredService<IInMemoryDatabase>();
+
+        private static IServiceProvider CreateContextServices(IServiceProvider serviceProvider)
         {
             var optionsBuilder = new DbContextOptionsBuilder();
-            optionsBuilder.UseInMemoryDatabase(nameof(InMemoryDatabaseTest));
+            optionsBuilder.UseInMemoryDatabase(nameof(InMemoryDatabaseCreatorTest));
 
-            return InMemoryTestHelpers.Instance.CreateContextServices(serviceProvider, optionsBuilder.Options).GetRequiredService<IInMemoryDatabase>();
+            return InMemoryTestHelpers.Instance.CreateContextServices(serviceProvider, optionsBuilder.Options);
         }
 
-        [Fact]
+        [ConditionalFact]
         public async Task Save_changes_adds_new_objects_to_store()
         {
             var serviceProvider = InMemoryTestHelpers.Instance.CreateContextServices(CreateModel());
@@ -77,11 +83,11 @@ namespace Microsoft.EntityFrameworkCore
 
             await inMemoryDatabase.SaveChangesAsync(new[] { entityEntry });
 
-            Assert.Equal(1, inMemoryDatabase.Store.GetTables(entityEntry.EntityType).SelectMany(t => t.Rows).Count());
+            Assert.Single(inMemoryDatabase.Store.GetTables(entityEntry.EntityType).SelectMany(t => t.Rows));
             Assert.Equal(new object[] { 42, "Unikorn" }, inMemoryDatabase.Store.GetTables(entityEntry.EntityType).Single().Rows.Single());
         }
 
-        [Fact]
+        [ConditionalFact]
         public async Task Save_changes_updates_changed_objects_in_store()
         {
             var serviceProvider = InMemoryTestHelpers.Instance.CreateContextServices(CreateModel());
@@ -99,11 +105,13 @@ namespace Microsoft.EntityFrameworkCore
 
             await inMemoryDatabase.SaveChangesAsync(new[] { entityEntry });
 
-            Assert.Equal(1, inMemoryDatabase.Store.GetTables(entityEntry.EntityType).SelectMany(t => t.Rows).Count());
-            Assert.Equal(new object[] { 42, "Unikorn, The Return" }, inMemoryDatabase.Store.GetTables(entityEntry.EntityType).Single().Rows.Single());
+            Assert.Single(inMemoryDatabase.Store.GetTables(entityEntry.EntityType).SelectMany(t => t.Rows));
+            Assert.Equal(
+                new object[] { 42, "Unikorn, The Return" },
+                inMemoryDatabase.Store.GetTables(entityEntry.EntityType).Single().Rows.Single());
         }
 
-        [Fact]
+        [ConditionalFact]
         public async Task Save_changes_removes_deleted_objects_from_store()
         {
             var serviceProvider = InMemoryTestHelpers.Instance.CreateContextServices(CreateModel());
@@ -124,14 +132,13 @@ namespace Microsoft.EntityFrameworkCore
 
             await inMemoryDatabase.SaveChangesAsync(new[] { entityEntry });
 
-            Assert.Equal(0, inMemoryDatabase.Store.GetTables(entityEntry.EntityType).SelectMany(t => t.Rows).Count());
+            Assert.Empty(inMemoryDatabase.Store.GetTables(entityEntry.EntityType).SelectMany(t => t.Rows));
         }
 
-        [Fact]
+        [ConditionalFact]
         public async Task Should_log_writes()
         {
-            var log = new List<(LogLevel Level, EventId Id, string Message)>();
-            var loggerFactory = new ListLoggerFactory(log);
+            var loggerFactory = new ListLoggerFactory();
 
             var serviceCollection = new ServiceCollection();
             serviceCollection.AddSingleton<ILoggerFactory>(loggerFactory);
@@ -146,24 +153,24 @@ namespace Microsoft.EntityFrameworkCore
 
             await inMemoryDatabase.SaveChangesAsync(new[] { entityEntry });
 
-            var entry = log.Single(t => t.Id.Id == InMemoryEventId.ChangesSaved.Id);
+            var (Level, _, Message, _, _) = loggerFactory.Log.Single(t => t.Id.Id == InMemoryEventId.ChangesSaved.Id);
 
-            Assert.Equal(LogLevel.Information, entry.Level);
-            Assert.Equal(InMemoryStrings.LogSavedChanges.GenerateMessage(1), entry.Message);
+            Assert.Equal(LogLevel.Information, Level);
+            Assert.Equal(InMemoryResources.LogSavedChanges(new TestLogger<InMemoryLoggingDefinitions>()).GenerateMessage(1), Message);
         }
 
         private static IModel CreateModel()
         {
-            var modelBuilder = new ModelBuilder(new ConventionSet());
+            var modelBuilder = new ModelBuilder(InMemoryConventionSetBuilder.Build());
 
             modelBuilder.Entity<Customer>(
                 b =>
-                    {
-                        b.HasKey(c => c.Id);
-                        b.Property(c => c.Name);
-                    });
+                {
+                    b.HasKey(c => c.Id);
+                    b.Property(c => c.Name);
+                });
 
-            return modelBuilder.Model;
+            return modelBuilder.Model.FinalizeModel();
         }
 
         private class Customer

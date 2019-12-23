@@ -4,51 +4,90 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using JetBrains.Annotations;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     <para>
+    ///         This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///         the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///         any release. You should only use it directly in your code with extreme caution and knowing that
+    ///         doing so can result in application failures when updating to a new Entity Framework Core release.
+    ///     </para>
+    ///     <para>
+    ///         The service lifetime is <see cref="ServiceLifetime.Scoped" />. This means that each
+    ///         <see cref="DbContext" /> instance will use its own instance of this service.
+    ///         The implementation may depend on other services registered with any lifetime.
+    ///         The implementation does not need to be thread-safe.
+    ///     </para>
     /// </summary>
     public class ChangeDetector : IChangeDetector
     {
+        private readonly IDiagnosticsLogger<DbLoggerCategory.ChangeTracking> _logger;
+        private readonly ILoggingOptions _loggingOptions;
+
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public const string SkipDetectChangesAnnotation = "ChangeDetector.SkipDetectChanges";
 
         private bool _suspended;
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        public ChangeDetector(
+            [NotNull] IDiagnosticsLogger<DbLoggerCategory.ChangeTracking> logger,
+            [NotNull] ILoggingOptions loggingOptions)
+        {
+            _logger = logger;
+            _loggingOptions = loggingOptions;
+        }
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual void Suspend() => _suspended = true;
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual void Resume() => _suspended = false;
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual void PropertyChanged(InternalEntityEntry entry, IPropertyBase propertyBase, bool setModified)
         {
-            if (_suspended || entry.EntityState == EntityState.Detached)
+            if (_suspended
+                || entry.EntityState == EntityState.Detached
+                || propertyBase is IServiceProperty)
             {
                 return;
             }
 
-            var property = propertyBase as IProperty;
-            if (property != null)
+            if (propertyBase is IProperty property)
             {
                 entry.SetPropertyModified(property, setModified);
 
@@ -57,34 +96,31 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
                     DetectKeyChange(entry, property);
                 }
             }
-            else
+            else if (propertyBase.GetRelationshipIndex() != -1
+                && propertyBase is INavigation navigation)
             {
-                if (propertyBase.GetRelationshipIndex() != -1)
-                {
-                    var navigation = propertyBase as INavigation;
-                    if (navigation != null)
-                    {
-                        DetectNavigationChange(entry, navigation);
-                    }
-                }
+                DetectNavigationChange(entry, navigation);
             }
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual void PropertyChanging(InternalEntityEntry entry, IPropertyBase propertyBase)
         {
-            if (_suspended || entry.EntityState == EntityState.Detached)
+            if (_suspended
+                || entry.EntityState == EntityState.Detached
+                || propertyBase is IServiceProperty)
             {
                 return;
             }
 
             if (!entry.EntityType.UseEagerSnapshots())
             {
-                var asProperty = propertyBase as IProperty;
-                if (asProperty != null
+                if (propertyBase is IProperty asProperty
                     && asProperty.GetOriginalValueIndex() != -1)
                 {
                     entry.EnsureOriginalValues();
@@ -98,37 +134,87 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual void DetectChanges(IStateManager stateManager)
         {
-            if (stateManager.Context.Model[SkipDetectChangesAnnotation] == null)
+            _logger.DetectChangesStarting(stateManager.Context);
+
+            foreach (var entry in stateManager.ToList()) // Might be too big, but usually _all_ entities are using Snapshot tracking
             {
-                foreach (var entry in stateManager.Entries.Where(
-                    e => e.EntityState != EntityState.Detached
-                         && e.EntityType.GetChangeTrackingStrategy() == ChangeTrackingStrategy.Snapshot).ToList())
+                if (entry.EntityType.GetChangeTrackingStrategy() == ChangeTrackingStrategy.Snapshot
+                    && entry.EntityState != EntityState.Detached)
                 {
-                    DetectChanges(entry);
+                    LocalDetectChanges(entry);
                 }
             }
+
+            _logger.DetectChangesCompleted(stateManager.Context);
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual void DetectChanges(InternalEntityEntry entry)
+            => DetectChanges(entry, new HashSet<InternalEntityEntry> { entry });
+
+        private void DetectChanges(InternalEntityEntry entry, HashSet<InternalEntityEntry> visited)
+        {
+            if (entry.EntityState != EntityState.Detached)
+            {
+                foreach (var foreignKey in entry.EntityType.GetForeignKeys())
+                {
+                    var principalEntry = entry.StateManager.FindPrincipal(entry, foreignKey);
+
+                    if (principalEntry != null
+                        && !visited.Contains(principalEntry))
+                    {
+                        visited.Add(principalEntry);
+                        DetectChanges(principalEntry, visited);
+                    }
+                }
+
+                LocalDetectChanges(entry);
+            }
+        }
+
+        private void LocalDetectChanges(InternalEntityEntry entry)
         {
             var entityType = entry.EntityType;
 
             foreach (var property in entityType.GetProperties())
             {
                 if (property.GetOriginalValueIndex() >= 0
-                    && !entry.IsConceptualNull(property)
-                    && !Equals(entry[property], entry.GetOriginalValue(property)))
+                    && !entry.IsModified(property)
+                    && !entry.IsConceptualNull(property))
                 {
-                    entry.SetPropertyModified(property);
+                    var current = entry[property];
+                    var original = entry.GetOriginalValue(property);
+
+                    var comparer = property.GetValueComparer() ?? property.FindTypeMapping()?.Comparer;
+
+                    if (comparer == null)
+                    {
+                        if (!Equals(current, original))
+                        {
+                            LogChangeDetected(entry, property, original, current);
+                            entry.SetPropertyModified(property);
+                        }
+                    }
+                    else
+                    {
+                        if (!comparer.Equals(current, original))
+                        {
+                            LogChangeDetected(entry, property, original, current);
+                            entry.SetPropertyModified(property);
+                        }
+                    }
                 }
             }
 
@@ -146,27 +232,53 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
             }
         }
 
-        private static void DetectKeyChange(InternalEntityEntry entry, IProperty property)
+        private void LogChangeDetected(InternalEntityEntry entry, IProperty property, object original, object current)
+        {
+            if (_loggingOptions.IsSensitiveDataLoggingEnabled)
+            {
+                _logger.PropertyChangeDetectedSensitive(entry, property, original, current);
+            }
+            else
+            {
+                _logger.PropertyChangeDetected(entry, property, original, current);
+            }
+        }
+
+        private void DetectKeyChange(InternalEntityEntry entry, IProperty property)
         {
             if (property.GetRelationshipIndex() >= 0)
             {
                 var snapshotValue = entry.GetRelationshipSnapshotValue(property);
                 var currentValue = entry[property];
 
+                var comparer = property.GetKeyValueComparer()
+                    ?? property.FindTypeMapping()?.KeyComparer;
+
                 // Note that mutation of a byte[] key is not supported or detected, but two different instances
                 // of byte[] with the same content must be detected as equal.
-                if (!StructuralComparisons.StructuralEqualityComparer.Equals(currentValue, snapshotValue))
+                if (!(comparer?.Equals(currentValue, snapshotValue)
+                    ?? StructuralComparisons.StructuralEqualityComparer.Equals(currentValue, snapshotValue)))
                 {
                     var keys = property.GetContainingKeys().ToList();
                     var foreignKeys = property.GetContainingForeignKeys()
                         .Where(fk => fk.DeclaringEntityType.IsAssignableFrom(entry.EntityType)).ToList();
 
-                    entry.StateManager.Notify.KeyPropertyChanged(entry, property, keys, foreignKeys, snapshotValue, currentValue);
+                    if (_loggingOptions.IsSensitiveDataLoggingEnabled)
+                    {
+                        _logger.ForeignKeyChangeDetectedSensitive(entry, property, snapshotValue, currentValue);
+                    }
+                    else
+                    {
+                        _logger.ForeignKeyChangeDetected(entry, property, snapshotValue, currentValue);
+                    }
+
+                    entry.StateManager.InternalEntityEntryNotifier.KeyPropertyChanged(
+                        entry, property, keys, foreignKeys, snapshotValue, currentValue);
                 }
             }
         }
 
-        private static void DetectNavigationChange(InternalEntityEntry entry, INavigation navigation)
+        private void DetectNavigationChange(InternalEntityEntry entry, INavigation navigation)
         {
             var snapshotValue = entry.GetRelationshipSnapshotValue(navigation);
             var currentValue = entry[navigation];
@@ -187,7 +299,6 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
                 }
 
                 var added = new HashSet<object>(ReferenceEqualityComparer.Instance);
-
                 if (currentCollection != null)
                 {
                     foreach (var entity in currentCollection)
@@ -199,17 +310,35 @@ namespace Microsoft.EntityFrameworkCore.ChangeTracking.Internal
                     }
                 }
 
-                if (added.Any()
-                    || removed.Any())
+                if (added.Count > 0
+                    || removed.Count > 0)
                 {
-                    stateManager.Notify.NavigationCollectionChanged(entry, navigation, added, removed);
+                    if (_loggingOptions.IsSensitiveDataLoggingEnabled)
+                    {
+                        _logger.CollectionChangeDetectedSensitive(entry, navigation, added, removed);
+                    }
+                    else
+                    {
+                        _logger.CollectionChangeDetected(entry, navigation, added, removed);
+                    }
+
+                    stateManager.InternalEntityEntryNotifier.NavigationCollectionChanged(entry, navigation, added, removed);
                 }
             }
             else if (!ReferenceEquals(currentValue, snapshotValue)
-                     && (!navigation.ForeignKey.IsOwnership
-                         || !navigation.IsDependentToPrincipal()))
+                && (!navigation.ForeignKey.IsOwnership
+                    || !navigation.IsDependentToPrincipal()))
             {
-                stateManager.Notify.NavigationReferenceChanged(entry, navigation, snapshotValue, currentValue);
+                if (_loggingOptions.IsSensitiveDataLoggingEnabled)
+                {
+                    _logger.ReferenceChangeDetectedSensitive(entry, navigation, snapshotValue, currentValue);
+                }
+                else
+                {
+                    _logger.ReferenceChangeDetected(entry, navigation, snapshotValue, currentValue);
+                }
+
+                stateManager.InternalEntityEntryNotifier.NavigationReferenceChanged(entry, navigation, snapshotValue, currentValue);
             }
         }
     }

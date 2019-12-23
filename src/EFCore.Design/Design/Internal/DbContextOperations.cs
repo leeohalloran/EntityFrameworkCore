@@ -3,11 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Infrastructure.Internal;
 using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -18,76 +18,97 @@ using Microsoft.Extensions.Logging;
 namespace Microsoft.EntityFrameworkCore.Design.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///     any release. You should only use it directly in your code with extreme caution and knowing that
+    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
     public class DbContextOperations
     {
-        // TODO: Flow in from tools (issue #8332)
-        private static readonly string[] _args = Array.Empty<string>();
-
         private readonly IOperationReporter _reporter;
         private readonly Assembly _assembly;
         private readonly Assembly _startupAssembly;
+        private readonly string[] _args;
         private readonly AppServiceProviderFactory _appServicesFactory;
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        // NB: Used by Scaffolding. Break with care.
         public DbContextOperations(
             [NotNull] IOperationReporter reporter,
             [NotNull] Assembly assembly,
-            [NotNull] Assembly startupAssembly)
-            : this(reporter, assembly, startupAssembly, new AppServiceProviderFactory(startupAssembly, reporter))
+            [NotNull] Assembly startupAssembly,
+            [NotNull] string[] args)
+            : this(reporter, assembly, startupAssembly, args, new AppServiceProviderFactory(startupAssembly, reporter))
         {
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         protected DbContextOperations(
             [NotNull] IOperationReporter reporter,
             [NotNull] Assembly assembly,
             [NotNull] Assembly startupAssembly,
+            [NotNull] string[] args,
             [NotNull] AppServiceProviderFactory appServicesFactory)
         {
             Check.NotNull(reporter, nameof(reporter));
             Check.NotNull(assembly, nameof(assembly));
             Check.NotNull(startupAssembly, nameof(startupAssembly));
+            Check.NotNull(args, nameof(args));
 
             _reporter = reporter;
             _assembly = assembly;
             _startupAssembly = startupAssembly;
+            _args = args;
             _appServicesFactory = appServicesFactory;
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual void DropDatabase([CanBeNull] string contextType)
         {
-            using (var context = CreateContext(contextType))
+            using var context = CreateContext(contextType);
+            var connection = context.Database.GetDbConnection();
+            _reporter.WriteInformation(DesignStrings.DroppingDatabase(connection.Database));
+            if (context.Database.EnsureDeleted())
             {
-                var connection = context.Database.GetDbConnection();
-                _reporter.WriteInformation(DesignStrings.DroppingDatabase(connection.Database));
-                if (context.Database.EnsureDeleted())
-                {
-                    _reporter.WriteInformation(DesignStrings.DatabaseDropped(connection.Database));
-                }
-                else
-                {
-                    _reporter.WriteInformation(DesignStrings.NotExistDatabase(connection.Database));
-                }
+                _reporter.WriteInformation(DesignStrings.DatabaseDropped(connection.Database));
+            }
+            else
+            {
+                _reporter.WriteInformation(DesignStrings.NotExistDatabase(connection.Database));
             }
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        public virtual string ScriptDbContext([CanBeNull] string contextType)
+        {
+            using var context = CreateContext(contextType);
+            return context.Database.GenerateCreateScript();
+        }
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual DbContext CreateContext([CanBeNull] string contextType)
             => CreateContext(FindContextType(contextType).Value);
@@ -104,15 +125,19 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual IEnumerable<Type> GetContextTypes()
             => FindContextTypes().Keys;
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual Type GetContextType([CanBeNull] string name)
             => FindContextType(name).Key;
@@ -125,14 +150,14 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
 
             // Look for IDesignTimeDbContextFactory implementations
             _reporter.WriteVerbose(DesignStrings.FindingContextFactories);
-            var contextFactories = _startupAssembly.GetConstructableTypes()
-                .Where(t => typeof(IDesignTimeDbContextFactory<DbContext>).GetTypeInfo().IsAssignableFrom(t));
+            var contextFactories = _startupAssembly.GetConstructibleTypes()
+                .Where(t => typeof(IDesignTimeDbContextFactory<DbContext>).IsAssignableFrom(t));
             foreach (var factory in contextFactories)
             {
                 _reporter.WriteVerbose(DesignStrings.FoundContextFactory(factory.ShortDisplayName()));
                 var manufacturedContexts =
                     from i in factory.ImplementedInterfaces
-                    where i.GetTypeInfo().IsGenericType
+                    where i.IsGenericType
                           && i.GetGenericTypeDefinition() == typeof(IDesignTimeDbContextFactory<>)
                     select i.GenericTypeArguments[0];
                 foreach (var context in manufacturedContexts)
@@ -159,13 +184,13 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
 
             // Look for DbContext classes in assemblies
             _reporter.WriteVerbose(DesignStrings.FindingReferencedContexts);
-            var types = _startupAssembly.GetConstructableTypes()
-                .Concat(_assembly.GetConstructableTypes())
+            var types = _startupAssembly.GetConstructibleTypes()
+                .Concat(_assembly.GetConstructibleTypes())
                 .ToList();
-            var contextTypes = types.Where(t => typeof(DbContext).GetTypeInfo().IsAssignableFrom(t)).Select(
+            var contextTypes = types.Where(t => typeof(DbContext).IsAssignableFrom(t)).Select(
                     t => t.AsType())
                 .Concat(
-                    types.Where(t => typeof(Migration).GetTypeInfo().IsAssignableFrom(t))
+                    types.Where(t => typeof(Migration).IsAssignableFrom(t))
                         .Select(t => t.GetCustomAttribute<DbContextAttribute>()?.ContextType)
                         .Where(t => t != null))
                 .Distinct();
@@ -175,57 +200,65 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
                 contexts.Add(
                     context,
                     FindContextFactory(context) ?? (() =>
+                    {
+                        try
                         {
-                            try
-                            {
-                                return (DbContext)Activator.CreateInstance(context);
-                            }
-                            catch (MissingMethodException ex)
-                            {
-                                throw new OperationException(DesignStrings.NoParameterlessConstructor(context.Name), ex);
-                            }
-                        }));
+                            return (DbContext)Activator.CreateInstance(context);
+                        }
+                        catch (MissingMethodException ex)
+                        {
+                            throw new OperationException(DesignStrings.NoParameterlessConstructor(context.Name), ex);
+                        }
+                    }));
             }
 
             return contexts;
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual ContextInfo GetContextInfo([CanBeNull] string contextType)
         {
-            using (var context = CreateContext(contextType))
+            using var context = CreateContext(contextType);
+            var info = new ContextInfo();
+
+            var provider = context.GetService<IDatabaseProvider>();
+            info.ProviderName = provider.Name;
+
+            if (((IDatabaseFacadeDependenciesAccessor)context.Database).Dependencies is IRelationalDatabaseFacadeDependencies)
             {
-                var info = new ContextInfo();
-
-                var provider = context.GetService<IDatabaseProvider>();
-                info.ProviderName = provider.Name;
-
-                var connection = context.Database.GetDbConnection();
-                info.DataSource = connection.DataSource;
-                info.DatabaseName = connection.Database;
-
-                var options = context.GetService<IDbContextOptions>();
-                info.Options = options.BuildOptionsFragment().Trim();
-
-                return info;
+                try
+                {
+                    var connection = context.Database.GetDbConnection();
+                    info.DataSource = connection.DataSource;
+                    info.DatabaseName = connection.Database;
+                }
+                catch (Exception exception)
+                {
+                    info.DataSource = info.DatabaseName = DesignStrings.BadConnection(exception.Message);
+                }
             }
+            else
+            {
+                info.DataSource = info.DatabaseName = DesignStrings.NoRelationalConnection;
+            }
+
+            var options = context.GetService<IDbContextOptions>();
+            info.Options = options.BuildOptionsFragment().Trim();
+
+            return info;
         }
 
         private Func<DbContext> FindContextFactory(Type contextType)
         {
-            var factoryInterface = typeof(IDesignTimeDbContextFactory<>).MakeGenericType(contextType).GetTypeInfo();
-            var factory = contextType.GetTypeInfo().Assembly.GetConstructableTypes()
-                .Where(t => factoryInterface.IsAssignableFrom(t))
-                .FirstOrDefault();
-            if (factory == null)
-            {
-                return null;
-            }
-
-            return () => CreateContextFromFactory(factory.AsType());
+            var factoryInterface = typeof(IDesignTimeDbContextFactory<>).MakeGenericType(contextType);
+            var factory = contextType.Assembly.GetConstructibleTypes()
+                .FirstOrDefault(t => factoryInterface.IsAssignableFrom(t));
+            return factory == null ? (Func<DbContext>)null : (() => CreateContextFromFactory(factory.AsType()));
         }
 
         private DbContext CreateContextFromFactory(Type factory)
@@ -246,6 +279,7 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
                 {
                     throw new OperationException(DesignStrings.NoContext(_assembly.GetName().Name));
                 }
+
                 if (types.Count == 1)
                 {
                     return types.First();
@@ -259,6 +293,7 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
             {
                 throw new OperationException(DesignStrings.NoContextWithName(name));
             }
+
             if (candidates.Count == 1)
             {
                 return candidates.First();
@@ -270,6 +305,7 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
             {
                 throw new OperationException(DesignStrings.MultipleContextsWithName(name));
             }
+
             if (candidates.Count == 1)
             {
                 return candidates.First();
@@ -282,7 +318,7 @@ namespace Microsoft.EntityFrameworkCore.Design.Internal
                 throw new OperationException(DesignStrings.MultipleContextsWithQualifiedName(name));
             }
 
-            Debug.Assert(candidates.Count == 1, "candidates.Count is not 1.");
+            Check.DebugAssert(candidates.Count == 1, $"candidates.Count is {candidates.Count}");
 
             return candidates.First();
         }

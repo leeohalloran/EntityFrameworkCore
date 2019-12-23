@@ -4,16 +4,17 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
-using System.Reflection;
 using System.Text.RegularExpressions;
+using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.Utilities;
 
 namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
 {
     /// <summary>
-    ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+    ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+    ///     any release. You should only use it directly in your code with extreme caution and knowing that
+    ///     doing so can result in application failures when updating to a new Entity Framework Core release.
     /// </summary>
     public class CSharpUtilities : ICSharpUtilities
     {
@@ -101,175 +102,23 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         private static readonly Regex _invalidCharsRegex
             = new Regex(
                 @"[^\p{Ll}\p{Lu}\p{Lt}\p{Lo}\p{Nd}\p{Nl}\p{Mn}\p{Mc}\p{Cf}\p{Pc}\p{Lm}]",
-                default(RegexOptions),
+                default,
                 TimeSpan.FromMilliseconds(1000.0));
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string DelimitString(string value)
-        {
-            Check.NotNull(value, nameof(value));
-
-            return value.Contains(Environment.NewLine)
-                ? "@\"" + EscapeVerbatimString(value) + "\""
-                : "\"" + EscapeString(value) + "\"";
-        }
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string EscapeString(string str)
-        {
-            Check.NotNull(str, nameof(str));
-
-            return str.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\t", "\\t");
-        }
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string EscapeVerbatimString(string str)
-        {
-            Check.NotEmpty(str, nameof(str));
-
-            return str.Replace("\"", "\"\"");
-        }
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateLiteral(byte[] value)
-        {
-            Check.NotNull(value, nameof(value));
-
-            return "new byte[] {" + string.Join(", ", value) + "}";
-        }
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateLiteral(bool value)
-            => value ? "true" : "false";
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateLiteral(int value)
-            => value.ToString(CultureInfo.InvariantCulture);
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateLiteral(long value)
-            => value.ToString(CultureInfo.InvariantCulture) + "L";
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateLiteral(decimal value)
-            => value.ToString(CultureInfo.InvariantCulture) + "m";
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateLiteral(float value)
-            => value.ToString(CultureInfo.InvariantCulture) + "f";
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateLiteral(double value)
-            => value.ToString(CultureInfo.InvariantCulture) + "D";
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateLiteral(TimeSpan value)
-            => "new TimeSpan(" + value.Ticks + ")";
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateLiteral(DateTime value)
-            => "new DateTime(" + value.Ticks + ", DateTimeKind."
-               + Enum.GetName(typeof(DateTimeKind), value.Kind) + ")";
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateLiteral(DateTimeOffset value)
-            => "new DateTimeOffset(" + value.Ticks + ", "
-               + GenerateLiteral(value.Offset) + ")";
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateLiteral(Guid value)
-            => "new Guid(" + GenerateLiteral(value.ToString()) + ")";
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateLiteral(string value)
-        {
-            Check.NotNull(value, nameof(value));
-
-            return "\"" + EscapeString(value) + "\"";
-        }
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateVerbatimStringLiteral(string value)
-        {
-            Check.NotNull(value, nameof(value));
-
-            return "@\"" + EscapeVerbatimString(value) + "\"";
-        }
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GenerateLiteral(object value)
-        {
-            Check.NotNull(value, nameof(value));
-
-            if (value.GetType().GetTypeInfo().IsEnum)
-            {
-                return value.GetType().Name + "." + Enum.Format(value.GetType(), value, "G");
-            }
-
-            return string.Format(CultureInfo.InvariantCulture, "{0}", value);
-        }
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual bool IsCSharpKeyword(string identifier)
             => _cSharpKeywords.Contains(identifier);
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual string GenerateCSharpIdentifier(
             string identifier,
@@ -278,8 +127,10 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             => GenerateCSharpIdentifier(identifier, existingIdentifiers, singularizePluralizer, Uniquifier);
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual string GenerateCSharpIdentifier(
             string identifier,
@@ -320,11 +171,13 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         }
 
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual string Uniquifier(
-            string proposedIdentifier, ICollection<string> existingIdentifiers)
+            [NotNull] string proposedIdentifier, [CanBeNull] ICollection<string> existingIdentifiers)
         {
             Check.NotEmpty(proposedIdentifier, nameof(proposedIdentifier));
 
@@ -344,59 +197,11 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
             return finalIdentifier;
         }
 
-        private static readonly Dictionary<Type, string> _primitiveTypeNames = new Dictionary<Type, string>
-        {
-            { typeof(bool), "bool" },
-            { typeof(byte), "byte" },
-            { typeof(byte[]), "byte[]" },
-            { typeof(sbyte), "sbyte" },
-            { typeof(short), "short" },
-            { typeof(ushort), "ushort" },
-            { typeof(int), "int" },
-            { typeof(uint), "uint" },
-            { typeof(long), "long" },
-            { typeof(ulong), "ulong" },
-            { typeof(char), "char" },
-            { typeof(float), "float" },
-            { typeof(double), "double" },
-            { typeof(string), "string" },
-            { typeof(decimal), "decimal" }
-        };
-
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
-        public virtual string GetTypeName(Type type)
-        {
-            Check.NotNull(type, nameof(type));
-
-            if (type.IsArray)
-            {
-                return GetTypeName(type.GetElementType()) + "[]";
-            }
-
-            if (type.GetTypeInfo().IsGenericType)
-            {
-                if (type.GetGenericTypeDefinition() == typeof(Nullable<>))
-                {
-                    return GetTypeName(Nullable.GetUnderlyingType(type)) + '?';
-                }
-
-                var genericTypeDefName = type.Name.Substring(0, type.Name.IndexOf('`'));
-                var genericTypeArguments = string.Join(", ", type.GenericTypeArguments.Select(GetTypeName));
-                return $"{genericTypeDefName}<{genericTypeArguments}>";
-            }
-
-            string typeName;
-            return _primitiveTypeNames.TryGetValue(type, out typeName)
-                ? typeName
-                : type.Name;
-        }
-
-        /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual bool IsValidIdentifier(string name)
         {
@@ -426,43 +231,36 @@ namespace Microsoft.EntityFrameworkCore.Scaffolding.Internal
         {
             if (ch < 'a')
             {
-                if (ch < 'A')
-                {
-                    return false;
-                }
-
-                return ch <= 'Z'
-                       || ch == '_';
+                return ch < 'A'
+                    ? false
+                    : ch <= 'Z'
+                      || ch == '_';
             }
+
             if (ch <= 'z')
             {
                 return true;
             }
-            if (ch <= '\u007F') // max ASCII
-            {
-                return false;
-            }
 
-            return IsLetterChar(CharUnicodeInfo.GetUnicodeCategory(ch));
+            return ch <= '\u007F' ? false : IsLetterChar(CharUnicodeInfo.GetUnicodeCategory(ch));
         }
 
         private static bool IsIdentifierPartCharacter(char ch)
         {
             if (ch < 'a')
             {
-                if (ch < 'A')
-                {
-                    return ch >= '0'
-                           && ch <= '9';
-                }
-
-                return ch <= 'Z'
-                       || ch == '_';
+                return ch < 'A'
+                    ? ch >= '0'
+                      && ch <= '9'
+                    : ch <= 'Z'
+                      || ch == '_';
             }
+
             if (ch <= 'z')
             {
                 return true;
             }
+
             if (ch <= '\u007F')
             {
                 return false;

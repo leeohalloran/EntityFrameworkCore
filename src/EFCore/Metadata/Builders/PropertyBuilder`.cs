@@ -2,15 +2,18 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Linq.Expressions;
 using JetBrains.Annotations;
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Microsoft.EntityFrameworkCore.Utilities;
 using Microsoft.EntityFrameworkCore.ValueGeneration;
 
 namespace Microsoft.EntityFrameworkCore.Metadata.Builders
 {
     /// <summary>
     ///     <para>
-    ///         Provides a simple API for configuring a <see cref="Property" />.
+    ///         Provides a simple API for configuring a <see cref="IMutableProperty" />.
     ///     </para>
     ///     <para>
     ///         Instances of this class are returned from methods when using the <see cref="ModelBuilder" /> API
@@ -20,11 +23,14 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Builders
     public class PropertyBuilder<TProperty> : PropertyBuilder
     {
         /// <summary>
-        ///     This API supports the Entity Framework Core infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
-        public PropertyBuilder([NotNull] InternalPropertyBuilder builder)
-            : base(builder)
+        [EntityFrameworkInternal]
+        public PropertyBuilder([NotNull] IMutableProperty property)
+            : base(property)
         {
         }
 
@@ -41,7 +47,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Builders
         /// <summary>
         ///     Configures whether this property must have a value assigned or whether null is a valid value.
         ///     A property can only be configured as non-required if it is based on a CLR type that can be
-        ///     assigned null.
+        ///     assigned <c>null</c>.
         /// </summary>
         /// <param name="required"> A value indicating whether the property is required. </param>
         /// <returns> The same builder instance so that multiple configuration calls can be chained. </returns>
@@ -58,10 +64,10 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Builders
             => (PropertyBuilder<TProperty>)base.HasMaxLength(maxLength);
 
         /// <summary>
-        ///     Configures the property as capable of persisting unicode characters or not.
+        ///     Configures the property as capable of persisting unicode characters.
         ///     Can only be set on <see cref="string" /> properties.
         /// </summary>
-        /// <param name="unicode"> A value indicating whether the property can contain unicode characters or not. </param>
+        /// <param name="unicode"> A value indicating whether the property can contain unicode characters. </param>
         /// <returns> The same builder instance so that multiple configuration calls can be chained. </returns>
         public new virtual PropertyBuilder<TProperty> IsUnicode(bool unicode = true)
             => (PropertyBuilder<TProperty>)base.IsUnicode(unicode);
@@ -87,7 +93,8 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Builders
         ///     <para>
         ///         Values are generated when the entity is added to the context using, for example,
         ///         <see cref="DbContext.Add{TEntity}" />. Values are generated only when the property is assigned
-        ///         the CLR default value (null for string, 0 for int, Guid.Empty for Guid, etc.).
+        ///         the CLR default value (<c>null</c> for <c>string</c>, <c>0</c> for <c>int</c>,
+        ///         <c>Guid.Empty</c> for <c>Guid</c>, etc.).
         ///     </para>
         ///     <para>
         ///         A single instance of this type will be created and used to generate values for this property in all
@@ -98,6 +105,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Builders
         ///         usually handled automatically by the database provider.
         ///     </para>
         /// </summary>
+        /// <typeparam name="TGenerator"> A type that inherits from <see cref="ValueGenerator" />. </typeparam>
         /// <returns> The same builder instance so that multiple configuration calls can be chained. </returns>
         public new virtual PropertyBuilder<TProperty> HasValueGenerator<TGenerator>()
             where TGenerator : ValueGenerator
@@ -110,7 +118,8 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Builders
         ///     <para>
         ///         Values are generated when the entity is added to the context using, for example,
         ///         <see cref="DbContext.Add{TEntity}" />. Values are generated only when the property is assigned
-        ///         the CLR default value (null for string, 0 for int, Guid.Empty for Guid, etc.).
+        ///         the CLR default value (<c>null</c> for <c>string</c>, <c>0</c> for <c>int</c>,
+        ///         <c>Guid.Empty</c> for <c>Guid</c>, etc.).
         ///     </para>
         ///     <para>
         ///         A single instance of this type will be created and used to generate values for this property in all
@@ -125,7 +134,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Builders
         ///         configured for this property. The database provider may still have a value generator for the property type.
         ///     </para>
         /// </summary>
-        /// <param name="valueGeneratorType"> A type that inherits from <see cref="ValueGenerator" /> </param>
+        /// <param name="valueGeneratorType"> A type that inherits from <see cref="ValueGenerator" />. </param>
         /// <returns> The same builder instance so that multiple configuration calls can be chained. </returns>
         public new virtual PropertyBuilder<TProperty> HasValueGenerator([CanBeNull] Type valueGeneratorType)
             => (PropertyBuilder<TProperty>)base.HasValueGenerator(valueGeneratorType);
@@ -138,7 +147,8 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Builders
         ///     <para>
         ///         Values are generated when the entity is added to the context using, for example,
         ///         <see cref="DbContext.Add{TEntity}" />. Values are generated only when the property is assigned
-        ///         the CLR default value (null for string, 0 for int, Guid.Empty for Guid, etc.).
+        ///         the CLR default value (<c>null</c> for <c>string</c>, <c>0</c> for <c>int</c>,
+        ///         <c>Guid.Empty</c> for <c>Guid</c>, etc.).
         ///     </para>
         ///     <para>
         ///         This factory will be invoked once to create a single instance of the value generator, and
@@ -225,17 +235,70 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Builders
             => (PropertyBuilder<TProperty>)base.HasField(fieldName);
 
         /// <summary>
+        ///     Configures the property so that the property value is converted to the given type before
+        ///     writing to the database and converted back when reading from the database.
+        /// </summary>
+        /// <typeparam name="TProvider"> The type to convert to and from. </typeparam>
+        /// <returns> The same builder instance so that multiple configuration calls can be chained. </returns>
+        public new virtual PropertyBuilder<TProperty> HasConversion<TProvider>()
+            => (PropertyBuilder<TProperty>)base.HasConversion<TProvider>();
+
+        /// <summary>
+        ///     Configures the property so that the property value is converted to the given type before
+        ///     writing to the database and converted back when reading from the database.
+        /// </summary>
+        /// <param name="providerClrType"> The type to convert to and from. </param>
+        /// <returns> The same builder instance so that multiple configuration calls can be chained. </returns>
+        public new virtual PropertyBuilder<TProperty> HasConversion([CanBeNull] Type providerClrType)
+            => (PropertyBuilder<TProperty>)base.HasConversion(providerClrType);
+
+        /// <summary>
+        ///     Configures the property so that the property value is converted to and from the database
+        ///     using the given conversion expressions.
+        /// </summary>
+        /// <typeparam name="TProvider"> The store type generated by the conversions. </typeparam>
+        /// <param name="convertToProviderExpression"> An expression to convert objects when writing data to the store. </param>
+        /// <param name="convertFromProviderExpression"> An expression to convert objects when reading data from the store. </param>
+        /// <returns> The same builder instance so that multiple configuration calls can be chained. </returns>
+        public virtual PropertyBuilder<TProperty> HasConversion<TProvider>(
+            [NotNull] Expression<Func<TProperty, TProvider>> convertToProviderExpression,
+            [NotNull] Expression<Func<TProvider, TProperty>> convertFromProviderExpression)
+            => HasConversion(
+                new ValueConverter<TProperty, TProvider>(
+                    Check.NotNull(convertToProviderExpression, nameof(convertToProviderExpression)),
+                    Check.NotNull(convertFromProviderExpression, nameof(convertFromProviderExpression))));
+
+        /// <summary>
+        ///     Configures the property so that the property value is converted to and from the database
+        ///     using the given <see cref="ValueConverter{TModel,TProvider}" />.
+        /// </summary>
+        /// <typeparam name="TProvider"> The store type generated by the converter. </typeparam>
+        /// <param name="converter"> The converter to use. </param>
+        /// <returns> The same builder instance so that multiple configuration calls can be chained. </returns>
+        public virtual PropertyBuilder<TProperty> HasConversion<TProvider>([CanBeNull] ValueConverter<TProperty, TProvider> converter)
+            => HasConversion((ValueConverter)converter);
+
+        /// <summary>
+        ///     Configures the property so that the property value is converted to and from the database
+        ///     using the given <see cref="ValueConverter" />.
+        /// </summary>
+        /// <param name="converter"> The converter to use. </param>
+        /// <returns> The same builder instance so that multiple configuration calls can be chained. </returns>
+        public new virtual PropertyBuilder<TProperty> HasConversion([CanBeNull] ValueConverter converter)
+            => (PropertyBuilder<TProperty>)base.HasConversion(converter);
+
+        /// <summary>
         ///     <para>
         ///         Sets the <see cref="PropertyAccessMode" /> to use for this property.
         ///     </para>
         ///     <para>
         ///         By default, the backing field, if one is found by convention or has been specified, is used when
         ///         new objects are constructed, typically when entities are queried from the database.
-        ///         Properties are used for all other accesses.  Calling this method witll change that behavior
+        ///         Properties are used for all other accesses.  Calling this method will change that behavior
         ///         for this property as described in the <see cref="PropertyAccessMode" /> enum.
         ///     </para>
         ///     <para>
-        ///         Calling this method overrrides for this property any access mode that was set on the
+        ///         Calling this method overrides for this property any access mode that was set on the
         ///         entity type or model.
         ///     </para>
         /// </summary>

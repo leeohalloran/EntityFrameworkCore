@@ -1,17 +1,18 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.EntityFrameworkCore.Storage;
-using Microsoft.EntityFrameworkCore.Storage.Internal;
 using Microsoft.EntityFrameworkCore.TestUtilities;
 using Microsoft.EntityFrameworkCore.TestUtilities.FakeProvider;
+using Microsoft.EntityFrameworkCore.Update;
 using Xunit;
 
 namespace Microsoft.EntityFrameworkCore.Migrations
 {
     public class MigrationCommandListBuilderTest
     {
-        [Theory]
+        [ConditionalTheory]
         [InlineData(false)]
         [InlineData(true)]
         public void MigrationCommandListBuilder_groups_multiple_statements_into_one_batch(bool suppressTransaction)
@@ -36,7 +37,7 @@ Statement3
                 ignoreLineEndingDifferences: true);
         }
 
-        [Theory]
+        [ConditionalTheory]
         [InlineData(false)]
         [InlineData(true)]
         public void MigrationCommandListBuilder_correctly_produces_multiple_batches(bool suppressTransaction)
@@ -81,7 +82,7 @@ Statement6
                 ignoreLineEndingDifferences: true);
         }
 
-        [Theory]
+        [ConditionalTheory]
         [InlineData(false)]
         [InlineData(true)]
         public void MigrationCommandListBuilder_ignores_empty_batches(bool suppressTransaction)
@@ -117,9 +118,31 @@ Statement3
         }
 
         private MigrationCommandListBuilder CreateBuilder()
-            => new MigrationCommandListBuilder(
-                new RelationalCommandBuilderFactory(
-                    new FakeDiagnosticsLogger<DbLoggerCategory.Database.Command>(),
-                    new FakeRelationalTypeMapper(new RelationalTypeMapperDependencies())));
+        {
+            var typeMappingSource = new TestRelationalTypeMappingSource(
+                TestServiceFactory.Instance.Create<TypeMappingSourceDependencies>(),
+                TestServiceFactory.Instance.Create<RelationalTypeMappingSourceDependencies>());
+
+            var logger = new FakeDiagnosticsLogger<DbLoggerCategory.Database.Command>();
+            var generationHelper = new RelationalSqlGenerationHelper(new RelationalSqlGenerationHelperDependencies());
+
+            return new MigrationCommandListBuilder(
+                new MigrationsSqlGeneratorDependencies(
+                    new RelationalCommandBuilderFactory(
+                        new RelationalCommandBuilderDependencies(
+                            typeMappingSource)),
+                    new FakeSqlGenerator(
+                        new UpdateSqlGeneratorDependencies(
+                            generationHelper,
+                            typeMappingSource)),
+                    generationHelper,
+                    typeMappingSource,
+                    new CurrentDbContext(new FakeDbContext()),
+                    logger));
+        }
+
+        private class FakeDbContext : DbContext
+        {
+        }
     }
 }
